@@ -1,0 +1,32 @@
+{
+  "name": "@psimona/darkf",
+  "version": "0.3.0",
+  "description": "A small, typed workflow engine for agent + script state graphs.",
+  "license": "MIT",
+  "author": "Patrizio Simona <patriziosimona@gmail.com>",
+  "type": "module",
+  "main": "src/exports.ts",
+  "types": "src/exports.ts",
+  "bin": {
+    "darkf": "src/cli/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/psimona/darkf.git"
+  },
+  "homepage": "https://psimona.github.io/darkf",
+  "keywords": [
+    "workflow",
+    "agent",
+    "state-graph",
+    "claude-code",
+    "opencode",
+    "bun"
+  ],
+  "engines": {
+    "bun": ">=1.2"
+  }
+}

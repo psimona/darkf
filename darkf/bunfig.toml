@@ -1,0 +1,13 @@
+# One merged suite, one threshold. `darkf-core`, `darkf-engine`, and the
+# old `darkf-cli` coverage configs (0.85/0.80 engine, 0.30/0.30 cli) died
+# with the package merge — the package-boundaries spec moved all sources
+# under one roof, so coverage is measured once, across the whole tree.
+#
+# kit/agents is excluded because the runners' real code paths execute
+# inside spawned worker subprocesses (see src/cli/detached.test.ts), which
+# the in-process profiler cannot see; their harness-side logic is still
+# covered in-process (handoff, registry, status).
+[test]
+coverage = true
+coveragePathIgnorePatterns = ["src/kit/agents/**"]
+coverageThreshold = { lines = 0.30, functions = 0.30 }

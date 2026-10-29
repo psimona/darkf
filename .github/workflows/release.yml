@@ -1,0 +1,36 @@
+name: Publish npm
+
+# Stages the darkf package on npm on version tags. A maintainer approves
+# the staged version on npmjs.com (2FA) before it goes live — npm's
+# recommended CI flow with a "Read and write (stage only)" granular token
+# (NPM_TOKEN secret). Staged publishing needs npm CLI >= 11.15, hence
+# Node 24; `npm i -g npm@latest` pins it independently of the runner's
+# bundled version. Staging a name that doesn't exist yet claims it with a
+# public 0.0.0-stage placeholder.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Pin current npm (stage subcommand needs >= 11.15)
+        run: npm install -g npm@latest
+
+      - name: Stage darkf for approval
+        run: npm stage publish darkf/
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master, feature/*]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: docker
+    container:
+      image: oven/bun:1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL -o /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          tar xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks && chmod +x /usr/local/bin/gitleaks
+
+      - name: Secret scan
+        run: bun run secret-scan
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint + format check
+        run: bun run lint
+
+      - name: Architecture boundaries
+        run: bun run arch-check
+
+      - name: Test + coverage
+        run: bun run test:coverage
