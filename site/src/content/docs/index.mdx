@@ -1,0 +1,40 @@
+---
+title: darkf
+description: A small, typed workflow engine for agent + script state graphs.
+hero:
+  tagline: A small, typed workflow engine for agent + script state graphs.
+  actions:
+    - text: Quickstart
+      link: start-here/quickstart/
+      icon: right-arrow
+    - text: Concepts
+      link: concepts/node-types/
+      icon: right-arrow
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+darkf runs a workflow — a plain TypeScript object describing states and
+transitions — as a sequence of **agent** nodes (an LLM call) and **script**
+nodes (a plain function), dispatched through one shared contract. It journals
+every step to disk, so "did it finish, and how" is always answerable from a
+file, not a live process.
+
+<CardGrid>
+	<Card title="Install" icon="download">
+		Install via npm (`bun install -g @psimona/darkf`). See [Install](start-here/install/).
+	</Card>
+	<Card title="Quickstart" icon="rocket">
+		Run a real agent that writes a haiku and commits it, end to end.
+		See [Quickstart](start-here/quickstart/).
+	</Card>
+	<Card title="Node types" icon="puzzle">
+		Every leaf is `agent` or `script`; the engine dispatches both the same way.
+		See [Concepts](concepts/node-types/).
+	</Card>
+	<Card title="CLI reference" icon="seti:shell">
+		`render`, `run`, `start`, `status`, `monitor`, `doctor`, `report`.
+		See [CLI commands](reference/cli-commands/).
+	</Card>
+</CardGrid>

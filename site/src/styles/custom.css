@@ -1,0 +1,19 @@
+/* With mermaidConfig.flowchart.useMaxWidth: false (astro.config.mjs), a
+ * diagram renders at its true pixel size instead of being shrunk to fit
+ * the content column. A narrow diagram is unaffected; a wide one now
+ * needs somewhere to go — scroll it instead of overflowing the page. */
+pre.mermaid {
+	overflow-x: auto;
+}
+
+/* astro-mermaid's own CSS caps every diagram's SVG at max-width: 100% of
+ * the container regardless of useMaxWidth, which re-introduces the same
+ * shrink we just turned off at the Mermaid config level. Override it. */
+pre.mermaid svg {
+	max-width: none !important;
+	/* pre.mermaid is a flex container; flex items shrink to fit by default
+	 * regardless of max-width. That default shrink was the actual cause —
+	 * not max-width, not the SVG's own width attribute, both already ruled
+	 * out above. */
+	flex-shrink: 0;
+}

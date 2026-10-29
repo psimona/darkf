@@ -1,0 +1,26 @@
+{
+  "name": "darkf-opencode-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "src/tui.tsx",
+  "dependencies": {
+    "@psimona/darkf": "file:../darkf"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.14.0",
+    "@opentui/core": "^0.1.99",
+    "@opentui/solid": "^0.1.99",
+    "solid-js": "1.9.12"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.14.0",
+    "@opentui/core": ">=0.1.99",
+    "@opentui/solid": ">=0.1.99",
+    "solid-js": "1.9.12"
+  },
+  "engines": {
+    "opencode": ">=1.14.0"
+  }
+}

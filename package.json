@@ -1,0 +1,30 @@
+{
+  "name": "darkf",
+  "private": true,
+  "workspaces": [
+    "darkf"
+  ],
+  "dependencies": {
+    "@psimona/darkf": "workspace:*"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "(cd darkf && bun x tsc --noEmit) || exit 1",
+    "arch-check": "depcruise darkf/src",
+    "test:coverage": "(cd darkf && bun test --coverage) || exit 1",
+    "secret-scan": "gitleaks detect --source . --config .gitleaks.toml --no-git --no-banner --exit-code 1",
+    "check": "bun run secret-scan && bun run typecheck && bun run lint && bun run arch-check && bun run test:coverage",
+    "pack:local": "bash scripts/pack-local.sh",
+    "install:global": "bun install -g \"$(bash scripts/pack-local.sh)\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
+    "bun-types": "^1.4.0",
+    "dependency-cruiser": "^18.2.0",
+    "typescript": "^5"
+  },
+  "bin": {
+    "darkf": "darkf/src/cli/index.ts"
+  }
+}

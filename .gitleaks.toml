@@ -1,0 +1,8 @@
+# Vendors external reference projects verbatim for design comparison, not
+# darkf's own code. Their test fixtures (fake AWS/GitHub/Stripe keys,
+# throwaway RSA private keys) are deliberate secret-shaped exemplars, not
+# real credentials.
+[allowlist]
+paths = [
+    '''reference/''',
+]
