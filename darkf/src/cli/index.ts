@@ -438,7 +438,7 @@ async function runCmd(dir: string, message?: string): Promise<void> {
   if (result.node.phase === "succeeded" || result.node.phase === "failed") {
     console.log("output:", result.node.result.output);
   }
-  console.log(`journal: ${resolve(dir, ".darkf", "run", result.runId, "journal.jsonl")}`);
+  console.log(`journal: ${join(rootDir, ".darkf", "run", result.runId, "journal.jsonl")}`);
 
   const lastState = result.trace.at(-1)?.state;
   if (lastState) {

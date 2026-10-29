@@ -53,7 +53,7 @@ flowchart LR
 ```ts
 // workflow.ts
 import { EXIT, type WorkflowDef } from "@psimona/darkf/src/core/index.ts";
-import { claudeCodeRunner } from "../../src/agents/claude-code.ts";
+import { claudeCodeRunner } from "@psimona/darkf/src/kit/agents/claude-code.ts";
 
 export const agentRunner = claudeCodeRunner;
 
@@ -170,13 +170,6 @@ status: succeeded
 output: undefined
 journal: .darkf/run/<runId>/journal.jsonl
 ```
-
-:::note[A real bug, found writing this page]
-`darkf run`'s printed `journal:` line is currently wrong — it's shown
-relative to the workflow's own directory, not where you ran the command.
-The actual file is always under *your* project's `.darkf/run/<runId>/`,
-matching the path above. Not fixed yet; filed as a known issue.
-:::
 
 `README.md` now has a haiku, committed:
 

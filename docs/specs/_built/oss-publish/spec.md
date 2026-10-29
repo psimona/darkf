@@ -1,5 +1,22 @@
 # OSS publish: darkf goes public as github.com/psimona/darkf
 
+**Shipped 2026-10-29.** Two deviations from the plan as written, both
+discovered mid-migration:
+
+- **Scoped npm name.** npm's typosquat filter rejects the unscoped `darkf`
+  name (too similar to `dargs` — staging and direct publish both refused).
+  The package publishes as **`@psimona/darkf`**; the installed binary is
+  still `darkf`. All import specifiers and docs use the scoped name.
+- **Staged publish, not stubs.** npm's bypass-2FA publish tokens were
+  deprecated mid-flight; the release workflow (`release.yml`, triggered by
+  `v*` tags) stages the package with a stage-only token and a maintainer
+  approves on npmjs.com. The three-stub squat became one real publish.
+
+Also superseded: the Forgejo CI workflow was removed entirely once GitHub
+became canonical (this spec's "keep it in-tree" fold), and the public repo
+was re-squashed to a single initial-release commit after the npm-name
+discovery.
+
 Decisions resolved in a grill session, 2026-10-29. `LICENSE` and the docs
 site already exist. `ROADMAP.md`'s "Distribution outside this monorepo"
 item stays open, narrowed by this spec. Sequencing is decided: the
@@ -109,9 +126,10 @@ this spec's only prerequisite:
 
 - `package-boundaries` is decided (Option D, package named `darkf`); its
   build precedes this migration. The real npm publish of the merged
-  `darkf` package follows the merge build. `site/.../install.md` says
+  package follows the merge build. `site/.../install.md` says
   "darkf isn't published to npm yet" and stays accurate until that day;
-  update it then, to `bun install -g darkf`.
+  update it then — done at publish time, now documenting
+  `bun install -g @psimona/darkf`.
 - the consumer repo consumes `pack:local` tarballs from a local path and is
   unaffected. Heads-up: if the consumer repo's workflows rely on the opencode
   fallback model, its own pinning becomes its work after it upgrades.
