@@ -15,6 +15,16 @@ shipped (see the `_built/agent-handoff` entry below for the one example so far).
 > deleted. Imports read `darkf/src/core/index.ts` and friends; consumers
 > (including the consumer repo) depend on the single `darkf` package. Entries
 > below predate the merge and keep the old package names.
+>
+> **2026-10-29 — OSS publish.** The repo went public as
+> `github.com/psimona/darkf` (fresh single-commit history; Forgejo frozen
+> as the private archive). Docs site live at
+> `psimona.github.io/darkf`. The package publishes to npm as
+> **`@psimona/darkf`** — npm's typosquat filter blocks the unscoped name —
+> via a staged-publish workflow (`release.yml`): a `v*` tag stages the
+> package, a maintainer approves on npmjs.com. See
+> `docs/specs/_built/oss-publish/spec.md`. CI runs on GitHub Actions; the
+> Forgejo CI workflow was removed.
 
 **darkf-core** — the shared vocabulary
 - `types.ts`: `NodeResult`, `DispatchInfo` (incl. `step`/`rootDir`), `AgentRunner`/`ScriptRunner`, the four-phase `NodeStatus`, the 9-variant `CrashReason` taxonomy, `WorkflowDef`/`StateDef` (agent, script, composite with `maxCycles`).
@@ -88,18 +98,14 @@ afterward has zero effect on the already-installed copy.
 
 ## Not started
 
-- **darkf-web** — package stub only (`package.json`, no source). No decisions made yet on what it's for (journal viewer? mermaid render host? run dashboard?).
-- **Other harness adapters** — pi, codex, deepseek were named in the agent-handoff spec's non-goals as deferred; OpenCode now also has a real adapter (`darkf-cli/src/agents/opencode.ts`, see "Done" above).
-- **Resume-from-journal** — PHILOSOPHY.md states the journal + last `NodeResult` should be enough to resume a run, but no resume command/logic exists yet in `darkf-cli`.
-- **Observability / learning loop** — no infra yet for capturing cross-run traces or evals to learn from past workflow runs. Candidate: [Opik](https://github.com/comet-ml/opik) (comet-ml's LLM tracing + eval platform, self-hosted or Comet-hosted) as the backing store, instrumenting `darkf-engine`'s dispatch loop to emit spans per node/task. Would sit alongside (or replace) the existing lightweight `.darkf/run/<runId>/journal.jsonl` convention — worth weighing that overlap before committing. Still at "should we even do this" — revisit when learning/improvement becomes the focus, not before.
-- **A real registry publish** — `scripts/pack-local.sh` (below) covers "a
-  frozen snapshot on this host," not "installable by anyone else." Flipping
-  `private: false` and pushing to an actual registry (npm or a local one
-  like Verdaccio) is still fully open, and only matters once a consumer
-  needs darkf on a different machine.
+- **Other harness adapters** — pi, codex, deepseek were named in the agent-handoff spec's non-goals as deferred; OpenCode also has a real adapter (`darkf/src/kit/agents/opencode.ts`, see "Done" above). With the package public, outsider demand is the deciding input — see `docs/specs/harness-adapters/spec.md`.
+- **Resume-from-journal** — PHILOSOPHY.md states the journal + last `NodeResult` should be enough to resume a run, but no resume command/logic exists yet in the CLI. Investigation draft: `docs/specs/resume-from-journal/spec.md`.
+- **Observability / learning loop** — no infra yet for capturing cross-run traces or evals to learn from past workflow runs. Candidate: [Opik](https://github.com/comet-ml/opik) (comet-ml's LLM tracing + eval platform, self-hosted or Comet-hosted) as the backing store, instrumenting the engine's dispatch loop to emit spans per node/task. Would sit alongside (or replace) the existing lightweight `.darkf/run/<runId>/journal.jsonl` convention — worth weighing that overlap before committing. Still at "should we even do this" — revisit when learning/improvement becomes the focus, not before.
+- **Shared task-list JSON types** — blueprint's plan/tasks.json shape and this repo's `examples/task-queue` `Task` are two ad-hoc definitions of the same concept. One shared type vocabulary (core types + `item-loop.ts`) unlocks reuse across workflows and renders the task list in the OpenCode TUI plugin. Draft: `docs/specs/task-list-json/spec.md`.
+- **Machine-readable roadmap format** — `docs/roadmap/*/map.md` is prose-first; a JSON sidecar would let the TUI plugin and the docs site render the decision map and its frontier. Draft: `docs/specs/roadmap-json/spec.md`.
 
 ## Open questions
 
-- What darkf-web is actually for.
+- ~~What darkf-web is actually for~~ — resolved 2026-10-29: deleted with the package merge (the package-boundaries decision); it had no source and no consumer.
 - Neither example exercises cross-retry `sessionId` resume (a runner reusing its own native session after a validation failure) — worth a third example if that path needs demonstrating.
 - ~~Whether the sibling-checkout constraint on the workspaces-based consumption model (above) is acceptable long-term~~ — resolved 2026-10-21: the consumer repo now consumes the `pack:local` tarballs (its `package.json` depends on `darkf-cli` via an absolute `file:` tarball path, no `workspaces` field, `darkf-core`/`darkf-engine` dropped and hoisted — same diamond-avoidance shape `pack-local.sh` already uses internally), not the live sibling-checkout symlink. Re-running `bun run pack:local` in this repo and `bun install` in the consumer repo is now a required step to pick up darkf changes there — they no longer show up live.
