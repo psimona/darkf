@@ -4,6 +4,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync } from "node
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import packageJson from "../../package.json";
 import {
   type AgentRunner,
   buildRegistry,
@@ -47,6 +48,7 @@ import {
   stallWarning,
   type TerminalState,
 } from "../kit/status.ts";
+import { type UpdateDeps, updateGate, upgradeCmd } from "./update.ts";
 
 const INDEX_PATH = fileURLToPath(import.meta.url);
 // Fixed, not yet measured against a cold `bun` import on real hosts — see
@@ -964,9 +966,35 @@ async function monitorCmd(args: string[]): Promise<number> {
   }
 }
 
+// Per-install state location for the self-update feature (self-update D-2):
+// XDG state semantics, not `.darkf/` (NG-5 — nothing per-project). The first
+// candidate whose defining environment variable exists wins; tests point
+// elsewhere by injecting `stateFile` through UpdateDeps.
+function updateStateFile(): string {
+  const xdg = process.env.XDG_STATE_HOME;
+  if (xdg) return join(xdg, "darkf", "last-update-check.json");
+  return join(process.env.HOME ?? "", ".local", "state", "darkf", "last-update-check.json");
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
 
+  // Self-update gate (REQ-1..REQ-5, REQ-11): runs before every dispatch, so
+  // its notice is the first line of stdout (NFR-3). The gate itself skips
+  // `upgrade`, which fetches on its own. Silent by contract (REQ-4).
+  const updateDeps: UpdateDeps = {
+    now: () => Date.now(),
+    fetchImpl: fetch,
+    spawnImpl: Bun.spawnSync,
+    stateFile: updateStateFile(),
+    installed: packageJson.version,
+  };
+  await updateGate(cmd, updateDeps);
+
+  if (cmd === "upgrade") {
+    process.exit(await upgradeCmd(updateDeps));
+    return;
+  }
   if (cmd === "workflows") {
     workflowsCmd();
     return;

@@ -61,6 +61,9 @@ async function runCli(
     cwd,
     stdout: "pipe",
     stderr: "pipe",
+    // Self-update gate: real-CLI spawns stay off the network and notice-free
+    // (no stdio changes to parse around), per the suite's no-network doctrine.
+    env: { ...process.env, DARKF_NO_UPDATE_CHECK: "1" },
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
