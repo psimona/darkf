@@ -1,3 +1,6 @@
 /reference/
 node_modules/
 .darkf/
+
+# serve-docs runtime files
+.serve-docs.*
