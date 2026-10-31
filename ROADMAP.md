@@ -103,12 +103,21 @@ dependencies); `darkf upgrade` updates the global install from npm in one
 command. `DARKF_NO_UPDATE_CHECK=1` opts out of the daily check. Landed via the
 dev-loop workflow run (see `darkf/feedback/2026-10-30-self-update.md`).
 
+**Shared task-list JSON types** (`docs/specs/_built/task-list-json`) — one
+`TaskList` type family in core (`TaskStatus`/`TaskPriority`/`Task`/
+`TaskRequirement`/`TaskList`) with a zero-dependency `parseTaskList`
+narrower and `foldTaskList` in the kit. The OpenCode plugin's overlay grew
+Workflow/Tasks tabs: the tasks tab reads the run's canonical
+`.darkf/run/<runId>/tasks.json` (strict `done/total` in the tab title,
+hidden while absent), renders rows per the spec's locked decisions, and
+highlights the file's `in-progress` row. Landed via the dev-loop workflow
+run (see `darkf/feedback/2026-10-31-task-list-json.md`).
+
 ## Not started
 
 - **Other harness adapters** — pi, codex, deepseek were named in the agent-handoff spec's non-goals as deferred; OpenCode also has a real adapter (`darkf/src/kit/agents/opencode.ts`, see "Done" above). With the package public, outsider demand is the deciding input — see `docs/specs/harness-adapters/spec.md`.
 - **Resume-from-journal** — PHILOSOPHY.md states the journal + last `NodeResult` should be enough to resume a run, but no resume command/logic exists yet in the CLI. Investigation draft: `docs/specs/resume-from-journal/spec.md`.
 - **Observability / learning loop** — no infra yet for capturing cross-run traces or evals to learn from past workflow runs. Candidate: [Opik](https://github.com/comet-ml/opik) (comet-ml's LLM tracing + eval platform, self-hosted or Comet-hosted) as the backing store, instrumenting the engine's dispatch loop to emit spans per node/task. Would sit alongside (or replace) the existing lightweight `.darkf/run/<runId>/journal.jsonl` convention — worth weighing that overlap before committing. Still at "should we even do this" — revisit when learning/improvement becomes the focus, not before.
-- **Shared task-list JSON types** — blueprint's plan/tasks.json shape and this repo's `examples/task-queue` `Task` are two ad-hoc definitions of the same concept. One shared type vocabulary (core types + `item-loop.ts`) unlocks reuse across workflows and renders the task list in the OpenCode TUI plugin. Draft: `docs/specs/task-list-json/spec.md`. Design decisions locked 2026-10-31: hand-written `parseTaskList`, canonical `.darkf/run/<runId>/tasks.json`, consumer repo migrates to `satisfies` + lowercase MoSCoW; plugin overlay grows Workflow/Tasks tabs (strict `done/total` counter in the tab title, file status authoritative for the active row).
 - **Machine-readable roadmap format** — `docs/roadmap/*/map.md` is prose-first; a JSON sidecar would let the TUI plugin and the docs site render the decision map and its frontier. Draft: `docs/specs/roadmap-json/spec.md`.
 
 ## Open questions

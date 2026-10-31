@@ -66,6 +66,6 @@ transcript injected.
 ## Dependencies
 
 - `registry-lifecycle` (shipped): gives `darkf resume` its run lookup.
-- `task-list-json` (draft): a resumed task-queue workflow must not re-claim
+- `task-list-json` (built, `docs/specs/_built/task-list-json`): a resumed task-queue workflow must not re-claim
   items the crashed run already finished — the shared task-list format with
   per-item status is what makes task-level idempotence expressible.

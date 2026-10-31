@@ -1,7 +1,9 @@
 # Task-list JSON: one shared type vocabulary for plan/dispatch task lists
 
-An investigation draft with its design decisions locked (see Decisions
-below); implementation not yet started. Two ad-hoc definitions of
+An investigation draft whose design decisions were locked (see Decisions
+below) and whose implementation shipped via the dev-loop workflow run of
+2026-10-31 (see `darkf/feedback/2026-10-31-task-list-json.md`). Two ad-hoc
+definitions of
 "task list" exist in this ecosystem today, and a third consumer (the
 OpenCode TUI plugin) needs the same shape for rendering. This spec proposes
 one set of shared types in `darkf`'s core vocabulary, so plan/dispatch

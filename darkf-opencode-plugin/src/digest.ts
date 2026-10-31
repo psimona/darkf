@@ -145,7 +145,7 @@ export function buildPlanView(
   };
 }
 
-// The run's task list (docs/specs/task-list-json/spec.md, plugin Decisions):
+// The run's task list (docs/specs/_built/task-list-json/spec.md, plugin Decisions):
 // three explicit states drive the tasks tab. `absent` — no tasks.json, the
 // tab is hidden entirely. `invalid` — the file exists but parseTaskList
 // rejected it: a `?` counter plus the error inline. `valid` — rendered rows,
