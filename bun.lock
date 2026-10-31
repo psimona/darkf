@@ -16,7 +16,7 @@
     },
     "darkf": {
       "name": "@psimona/darkf",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "darkf": "src/cli/index.ts",
       },
