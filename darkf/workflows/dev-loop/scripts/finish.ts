@@ -15,10 +15,12 @@ import type { DispatchInfo, NodeResult } from "@psimona/darkf/src/core/index.ts"
 //   - rolls back (reset --hard + checkout back) on any git failure.
 const FEATURE = "task-list-json";
 const ALLOWED = [
-  "docs/specs/",
+  "docs/",
   "darkf/src/",
   "darkf-opencode-plugin/",
   "ROADMAP.md",
+  "README.md",
+  "site/",
   "darkf/workflows/",
 ];
 

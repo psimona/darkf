@@ -1,7 +1,8 @@
 import { DONE, type WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 
-// dev-loop — begin → implement → check → review → finish(squash) → feedback.
+// dev-loop — begin → implement → check → review → document → finish(squash) →
+// feedback.
 //
 // The darkf-on-darkf pilot, expanded after its first real run built the CLI
 // self-update feature (docs/specs/self-update/). Shape ported from
@@ -24,7 +25,8 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 // Implement prompt). No other git automation: the human curates what the
 // workflow leaves behind (spec archive, roadmap entry, feedback note).
 //
-// The implementer, fixer, and reviewer are separate dispatches. Their only
+// The implementer, fixer, reviewer, and documenter are separate dispatches.
+// Their only
 // shared channels are the repo itself (files, git diff, the spec docs) and
 // the one-hop handoff — matching PHILOSOPHY.md: nothing rides along for
 // free.
@@ -46,10 +48,11 @@ export const workflow: WorkflowDef = {
     },
     Loop: {
       initial: "Implement",
-      // The normal path is one cycle (Implement → Check → Review → Finish).
-      // Each Fix → Check re-entry costs another. 6 leaves room for several
-      // fix rounds before the engine calls the run stuck.
-      maxCycles: 6,
+      // The normal path is one cycle (Implement → Check → Review → Document
+      // → Finish). Each Fix → Check re-entry costs another. 8 leaves room
+      // for two fix rounds including the terminal Document dispatch before
+      // the engine calls the run stuck.
+      maxCycles: 8,
       states: {
         Implement: {
           type: "agent",
@@ -105,7 +108,25 @@ Verify the working tree against docs/specs/${FEATURE}/spec.md:
 Approve only if the implementation fulfills the spec. Otherwise list every required change concretely in the output.
 
 Finish with event "approved" or event "changes_requested".`,
-          on: { approved: "Finish", changes_requested: "Fix" },
+          on: { approved: "Document", changes_requested: "Fix" },
+        },
+        Document: {
+          type: "agent",
+          agent: { model: MODEL },
+          retries: 1,
+          prompt: `You are updating user-facing documentation for the ${FEATURE} feature, after an independent review approved the implementation. Do not modify code or tests.
+
+Read docs/specs/${FEATURE}/spec.md (or prd.md/design.md when present) for what the feature does, and run git diff master plus git status --porcelain to see what shipped.
+
+Update only what the feature's user-facing surface touches:
+- README.md — CLI flags/commands, plugin behavior, setup steps that changed
+- docs-site pages under site/src/content/docs/ — the affected guide or reference page; add a short new guide only for a genuinely user-visible capability
+- cross-references in docs/ that now point at moved or renamed paths
+
+Do NOT touch: ROADMAP.md, darkf/feedback/, docs/specs/ (the spec archive move and roadmap entry are post-merge human curation), any file under darkf/src/ or darkf-opencode-plugin/.
+
+If nothing user-facing changed, or the docs need no edit, finish with event "skipped" and put the one-line reason in the output. Otherwise make the edits and finish with event "documented". If the docs cannot be updated (for example the site is broken), finish with event "blocked" and the reason.`,
+          on: { documented: "Finish", skipped: "Finish", blocked: DONE },
         },
       },
     },
