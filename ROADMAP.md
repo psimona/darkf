@@ -4,8 +4,7 @@ Status snapshot, not a durable plan — update this as things move. See
 `PHILOSOPHY.md` for the principles this roadmap should never contradict.
 Design specs for anything not-yet-built belong under
 `<subproject>/docs/specs/<slug>/`, moving to `docs/specs/_built/<slug>/` once
-shipped (see the `_built/agent-handoff` entry below for the one example so far).
-
+shipped.
 ## Done
 
 > **2026-10-29 — package merge.** The `package-boundaries` spec decided
@@ -96,6 +95,14 @@ global `darkf` bin — confirmed end to end from a scratch directory with
 no relation to this repo, and confirmed that editing this repo's source
 afterward has zero effect on the already-installed copy.
 
+**CLI self-update** (`docs/specs/_built/self-update`) — installed copies learn
+about new releases: a `darkf` invocation checks npm for a newer
+`@psimona/darkf` at most once a day and prints a one-line notice as the first
+line of stdout when one exists (fail-silent, bounded timeout, zero new
+dependencies); `darkf upgrade` updates the global install from npm in one
+command. `DARKF_NO_UPDATE_CHECK=1` opts out of the daily check. Landed via the
+dev-loop workflow run (see `darkf/feedback/2026-10-30-self-update.md`).
+
 ## Not started
 
 - **Other harness adapters** — pi, codex, deepseek were named in the agent-handoff spec's non-goals as deferred; OpenCode also has a real adapter (`darkf/src/kit/agents/opencode.ts`, see "Done" above). With the package public, outsider demand is the deciding input — see `docs/specs/harness-adapters/spec.md`.
@@ -103,7 +110,6 @@ afterward has zero effect on the already-installed copy.
 - **Observability / learning loop** — no infra yet for capturing cross-run traces or evals to learn from past workflow runs. Candidate: [Opik](https://github.com/comet-ml/opik) (comet-ml's LLM tracing + eval platform, self-hosted or Comet-hosted) as the backing store, instrumenting the engine's dispatch loop to emit spans per node/task. Would sit alongside (or replace) the existing lightweight `.darkf/run/<runId>/journal.jsonl` convention — worth weighing that overlap before committing. Still at "should we even do this" — revisit when learning/improvement becomes the focus, not before.
 - **Shared task-list JSON types** — blueprint's plan/tasks.json shape and this repo's `examples/task-queue` `Task` are two ad-hoc definitions of the same concept. One shared type vocabulary (core types + `item-loop.ts`) unlocks reuse across workflows and renders the task list in the OpenCode TUI plugin. Draft: `docs/specs/task-list-json/spec.md`.
 - **Machine-readable roadmap format** — `docs/roadmap/*/map.md` is prose-first; a JSON sidecar would let the TUI plugin and the docs site render the decision map and its frontier. Draft: `docs/specs/roadmap-json/spec.md`.
-- **CLI self-update** — installed copies learn about new releases: a `darkf` invocation checks npm for a newer `@psimona/darkf` at most once a day and prints a one-line notice as the first line of stdout when one exists (fail-silent, bounded timeout, zero new dependencies); `darkf upgrade` updates the global install from npm in one command. Draft: `docs/specs/self-update/prd.md`.
 
 ## Open questions
 
