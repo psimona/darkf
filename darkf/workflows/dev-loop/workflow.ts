@@ -32,8 +32,8 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
-const RUN_DATE = "2026-10-30";
-const FEATURE = "self-update";
+const RUN_DATE = "2026-10-31";
+const FEATURE = "task-list-json";
 
 export const workflow: WorkflowDef = {
   initial: "Begin",
@@ -57,16 +57,18 @@ export const workflow: WorkflowDef = {
           retries: 1,
           prompt: `Implement the ${FEATURE} feature in this repository.
 
-First read docs/specs/${FEATURE}/prd.md and docs/specs/${FEATURE}/design.md. They are the contract: implement exactly what the design specifies, nothing more.
+First read docs/specs/${FEATURE}/spec.md. It is the contract: its Design sketch and both Decisions sections are locked — implement exactly what they specify, nothing more.
 
-Resume semantics: if the working tree already implements the spec, verify that instead of re-implementing — read the existing darkf/src/cli/update.ts and update.test.ts, confirm they match the design, and finish "implemented" without rewriting.
+Resume semantics: if the working tree already implements the spec, verify that instead of re-implementing — read the existing darkf/src/core/tasks.ts and darkf-opencode-plugin/src/digest.ts, confirm they match the spec, and finish "implemented" without rewriting.
 
 Deliverables (when not already present):
-- new file darkf/src/cli/update.ts with the module interface from the design (UpdateState, UpdateDeps, readState, writeState, isDue, isNewer, checkRegistry, updateGate, upgradeCmd)
-- edits to darkf/src/cli/index.ts: the updateGate call in main() before command dispatch, and the upgrade branch
-- tests in darkf/src/cli/update.test.ts covering the design's testing coverage areas
+- the TaskList type family in darkf/src/core/types.ts per the spec's Design sketch (TaskStatus, TaskPriority, Task, TaskRequirement, TaskList), re-exported from darkf/src/core/index.ts
+- parseTaskList in darkf/src/core/tasks.ts: hand-written, zero-dependency, narrowing unknown JSON to TaskList | { error } (Decisions: Validation)
+- foldTaskList alongside foldJournal in darkf/src/kit/status.ts: a pure function returning done/total counts, the current in-progress item, and stall state
+- the plugin (darkf-opencode-plugin/src/): TaskListView in digest.ts; store.ts reads .darkf/run/<runId>/tasks.json on the existing poll with an fs.watch next to the journal watcher; overlay.tsx grows a tab bar — tab "workflow" (today's PlanGraph, unchanged, the default) and tab "tasks nn/mm" (strict done/total in the title, hidden while tasks.json is absent, "?" counter plus the inline parse error when invalid); task rows per the plugin Decisions (glyph + id + title, "!" before the title for must priority, the active row's dim "↳ REQ-…" satisfies line, ○ pending / ● in-progress accent bold / ✓ done dim / ✗ failed error); keys "1"/"2" and clicking a tab title switch tabs; the supervisor pane stays below, shared by both tabs
+- tests: parseTaskList narrowing cases (valid list, missing/wrong-typed fields, bad status and priority unions, tasks not an array), foldTaskList counts/current/stall, and the TaskListView digest in darkf-opencode-plugin/src/digest.test.ts
 
-Follow the existing code style of darkf/src/cli/index.ts. Do not commit, do not touch files outside darkf/src/ and docs/specs/${FEATURE}/.
+Follow the existing code style of darkf/src/kit/status.ts and darkf-opencode-plugin/src/. Do not commit. Do not touch files outside darkf/src/, darkf-opencode-plugin/src/, and docs/specs/${FEATURE}/.
 
 Finish with event "implemented". If the spec cannot be implemented as written, finish with event "blocked" and put the reason in the output. If a review demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { implemented: "Check", blocked: DONE, disputed: DONE },
@@ -83,7 +85,7 @@ Finish with event "implemented". If the spec cannot be implemented as written, f
           retries: 1,
           prompt: `You are repairing the ${FEATURE} implementation after a failed gate.
 
-The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/design.md for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/.
+The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/ and darkf-opencode-plugin/src/.
 
 Finish with event "fixed". If the failure exposes a spec defect you cannot resolve in code, finish with event "blocked" and the reason. If the demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { fixed: "Check", blocked: DONE, disputed: DONE },
@@ -94,13 +96,13 @@ Finish with event "fixed". If the failure exposes a spec defect you cannot resol
           retries: 1,
           prompt: `You are an independent reviewer. Do not modify any files.
 
-Verify the working tree against docs/specs/${FEATURE}/prd.md and docs/specs/${FEATURE}/design.md:
+Verify the working tree against docs/specs/${FEATURE}/spec.md:
 - inspect git status --porcelain in addition to git diff — agent-authored new files are invisible to git diff alone
-- check every REQ-1 to REQ-11 and NFR-1 to NFR-3 in prd.md has a code-level home
-- check darkf/src/cli/update.test.ts covers the design's testing coverage areas
-- you may run bun test darkf/src/cli/update.test.ts yourself
+- check the types match the spec's Design sketch field for field, and that both Decisions sections are each reflected in code (parseTaskList zero-dep narrowing; tasks.json read from .darkf/run/<runId>/; satisfies + lowercase MoSCoW; row format, glyph mapping, strict done/total counter, hidden-when-absent tab, file-status active row)
+- check the test suites cover the spec: parseTaskList narrowing, foldTaskList, and the TaskListView digest
+- you may run "bun test darkf/src/core darkf/src/kit darkf-opencode-plugin/src" yourself
 
-Approve only if the implementation fulfills the design. Otherwise list every required change concretely in the output.
+Approve only if the implementation fulfills the spec. Otherwise list every required change concretely in the output.
 
 Finish with event "approved" or event "changes_requested".`,
           on: { approved: "Finish", changes_requested: "Fix" },

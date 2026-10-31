@@ -1,11 +1,29 @@
 # Task-list JSON: one shared type vocabulary for plan/dispatch task lists
 
-An investigation draft, not yet a decision. Two ad-hoc definitions of
+An investigation draft with its design decisions locked (see Decisions
+below); implementation not yet started. Two ad-hoc definitions of
 "task list" exist in this ecosystem today, and a third consumer (the
 OpenCode TUI plugin) needs the same shape for rendering. This spec proposes
 one set of shared types in `darkf`'s core vocabulary, so plan/dispatch
 workflows, the item-loop helper, and visualizations all speak the same
 JSON.
+
+## Decisions
+
+Locked 2026-10-31 by decision walkthrough:
+
+- **Validation: hand-written `parseTaskList`.** `parseTaskList(json: unknown):
+  TaskList | { error }` in darkf core, zero deps. The item-loop path must not
+  crash on malformed lists, and the plugin shares the same validator.
+- **Colocation: `.darkf/run/<runId>/tasks.json` is the canonical location.**
+  The run generates the plan, so the task list is written there — not copied
+  there. Plugin discovery joins the run root (via `locate.ts`) to this file.
+  Project-level `tasks.json` (the `task-queue` example) becomes a legacy
+  alternate shape, not the convention the plugin targets.
+- **Consumer repo migrates to the standard.** Tasks use `satisfies` and
+  lowercase MoSCoW (`"must"`); the consumer repo's plan phase adopts these
+  via a one-shot script. It has exactly one writer and the plugin has no
+  legacy readers, so no dual-schema tolerance in the validator.
 
 ## Problem
 
@@ -98,16 +116,61 @@ current item, and stall state for rendering.
 
 ## Open decisions
 
-- **Validation depth.** A `parseTaskList` that narrows unknown JSON to
-  `TaskList | error` (hand-written, zero deps) versus trusting the writing
-  workflow. The item-loop path must not crash on malformed lists — a small
-  hand-rolled validator is probably the whole cost.
-- **Colocation convention.** Project-level `tasks.json` (today) versus a
-  per-run copy under `.darkf/run/<runId>/` (resume-safe, per the
-  resume-from-journal draft). Recommendation: project-level stays the
-  source of truth; the run journal's task events carry item ids, and the
-  plugin joins the two.
-- **Does the consumer repo migrate?** Its `requirements` field name and
-  `"Must"`-capitalized MoSCoW differ from this proposal. Its workflow is
-  the only writer, so migration is one script — but it is outside this
-  repo's control.
+None — all resolved, see Decisions above. The former open questions
+(validation depth, colocation, consumer migration) are decided there.
+
+## Plugin visualization: Workflow and Tasks tabs
+
+With a run's task list canonical at `.darkf/run/<runId>/tasks.json` (see
+Decisions), the OpenCode TUI plugin's overlay dialog (`overlay.tsx`) grows
+a tab bar. Today it renders one "plan" pane (the workflow graph) above a
+supervisor pane:
+
+```
+┌─ Dialog ──────────────────────────────────────────┐
+│ workflow │ tasks 3/9                              │
+│ ┌ workflow graph (today's "plan" pane) ─────────┐ │
+│ │ ...                                           │ │
+│ └───────────────────────────────────────────────┘ │
+│ ┌ supervisor (shared by both tabs) ─────────────┐ │
+│ └───────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────┘
+```
+
+- **Tab "workflow"** — today's `PlanGraph`, unchanged, just rehomed under a
+  tab. The scrollbox's `title="plan"` goes away; the tab bar names it.
+- **Tab "tasks nn/mm"** — the title always carries `done/total`, so the
+  tab strip itself is the progress bar; the run advances a visible counter
+  even while the user never opens the tab. The pane renders the run's
+  `TaskList`, read from `<rootDir>/.darkf/run/<runId>/tasks.json` and
+  narrowed by `parseTaskList`.
+- **Supervisor pane** — run-level, not view-level; stays below, shared.
+- **Data path** — `store.ts` reads the file on its existing 1s poll and
+  adds an `fs.watch` next to the journal watcher; `digest.ts` grows a
+  `TaskListView` next to `PlanView`. No new dependency, no new loop.
+- **Switching** — keys `1`/`2` and clicking a tab title; "workflow" is the
+  default so auto-open behavior is unchanged.
+
+### Decisions (plugin UI)
+
+Locked 2026-10-31 by decision walkthrough:
+
+- **Row contents.** Base row is `<glyph> <id> <title>`; must-priority tasks
+  get a `!` before the title. Only the active task carries a second, dim
+  line with its `satisfies` links (`↳ REQ-1, REQ-4`). Full detail stays in
+  the JSON.
+- **Glyph/color mapping.** `○` pending (default fg) · `●` in-progress
+  (accent, bold — same as the workflow view's active node) · `✓` done
+  (dim, title text also dims) · `✗` failed (error). The dot pair stays
+  reserved for "where the run is" across both tabs; `✓`/`✗` say terminal
+  state and read in monochrome. Only `accent`/`error`/default/dim are
+  used — no theme colors beyond what the plugin already touches.
+- **Counter.** Strict `done/total`: `nn` counts `done` only; pending,
+  in-progress, and failed all count as not-done. Tab hidden entirely when
+  `tasks.json` is absent; shown with a `?` counter and the `parseTaskList`
+  error inline when the file exists but is invalid.
+- **Current-task highlight.** The file's `in-progress` status is
+  authoritative — the plugin renders what `tasks.json` says, no journal
+  join (that was the pre-amendment colocation recommendation; see
+  Decisions above). Freshness is the writer's responsibility; the
+  workflow stall warning covers the stale-row case.
