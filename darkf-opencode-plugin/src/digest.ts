@@ -1,10 +1,12 @@
-import { foldJournal, type JournalDigest, stallWarning } from "@psimona/darkf";
+import { foldJournal, foldTaskList, type JournalDigest, stallWarning } from "@psimona/darkf";
 import {
   buildRegistry,
   EXIT,
   isComposite,
   type RegistryEntry as PlanRegistryEntry,
+  parseTaskList,
   type StateDef,
+  type Task,
   type WorkflowDef,
 } from "@psimona/darkf/src/core/index.ts";
 
@@ -141,4 +143,42 @@ export function buildPlanView(
     stall: stallWarning(digest),
     supervisor,
   };
+}
+
+// The run's task list (docs/specs/task-list-json/spec.md, plugin Decisions):
+// three explicit states drive the tasks tab. `absent` — no tasks.json, the
+// tab is hidden entirely. `invalid` — the file exists but parseTaskList
+// rejected it: a `?` counter plus the error inline. `valid` — rendered rows,
+// with `current` straight from the file's own `in-progress` status (no
+// journal join) and `stall` from foldTaskList.
+export type TaskListView =
+  | { runId: string; state: "absent" }
+  | { runId: string; state: "invalid"; error: string }
+  | {
+      runId: string;
+      state: "valid";
+      tasks: Task[];
+      done: number;
+      total: number;
+      current: Task | null;
+      stall: string | null;
+    };
+
+/**
+ * `tasksJsonText` is the raw contents of `.darkf/run/<runId>/tasks.json`, or
+ * `undefined` when the file couldn't be read — the absent/invalid split the
+ * tasks tab title depends on. An empty or mid-write file counts as invalid,
+ * never absent.
+ */
+export function buildTaskListView(runId: string, tasksJsonText: string | undefined): TaskListView {
+  if (tasksJsonText === undefined) return { runId, state: "absent" };
+  let json: unknown;
+  try {
+    json = JSON.parse(tasksJsonText);
+  } catch (err) {
+    return { runId, state: "invalid", error: err instanceof Error ? err.message : String(err) };
+  }
+  const parsed = parseTaskList(json);
+  if ("error" in parsed) return { runId, state: "invalid", error: parsed.error };
+  return { runId, state: "valid", tasks: parsed.tasks, ...foldTaskList(parsed) };
 }

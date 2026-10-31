@@ -2,9 +2,9 @@
 import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui";
 import { createTextAttributes } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
-import { EXIT } from "@psimona/darkf/src/core/index.ts";
+import { EXIT, type Task, type TaskStatus } from "@psimona/darkf/src/core/index.ts";
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import type { PlanNode, PlanView } from "./digest.ts";
+import type { PlanNode, PlanView, TaskListView } from "./digest.ts";
 import type { RunBinding } from "./locate.ts";
 import type { LiveStore } from "./store.ts";
 import { ToggleTab } from "./toggle-tab.tsx";
@@ -12,6 +12,13 @@ import { ToggleTab } from "./toggle-tab.tsx";
 const MODE = "darkf.plan";
 const TYPE_ICON: Record<"agent" | "script", string> = { agent: "🤖", script: "⚙️" };
 const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
+const TASK_GLYPHS: Record<TaskStatus, string> = {
+  pending: "○",
+  "in-progress": "●",
+  done: "✓",
+  failed: "✗",
+};
 
 interface OverlayState {
   runId?: string;
@@ -156,6 +163,116 @@ function SupervisorPanel(props: { view: PlanView }): JSX.Element {
   );
 }
 
+// One task row: `<glyph> <id> <title>`, `!` before the title for must
+// priority. Glyph/color per the locked mapping — the dot pair (○/●) stays
+// "where the run is", ✓/✗ read terminal state. Only the active (in-progress)
+// row grows a second, dim `↳` line with its satisfies links.
+function TaskRow(props: {
+  task: Task;
+  active: boolean;
+  accent: string;
+  errorColor: string;
+}): JSX.Element {
+  const task = props.task;
+  const style = (() => {
+    switch (task.status) {
+      case "in-progress":
+        return { fg: props.accent as string | undefined, attributes: BOLD };
+      case "done":
+        return { fg: undefined, attributes: DIM };
+      case "failed":
+        return { fg: props.errorColor as string | undefined, attributes: undefined };
+      default:
+        return { fg: undefined, attributes: undefined };
+    }
+  })();
+  const must = task.priority === "must";
+  return (
+    <box flexDirection="column">
+      <text fg={style.fg} attributes={style.attributes}>
+        {TASK_GLYPHS[task.status]} {task.id}
+        {must ? " ! " : " "}
+        {task.title}
+      </text>
+      <Show when={props.active && (task.satisfies?.length ?? 0) > 0}>
+        <text attributes={DIM}>↳ {(task.satisfies ?? []).join(", ")}</text>
+      </Show>
+    </box>
+  );
+}
+
+// The tasks tab's pane. Absent renders nothing (the tab itself is hidden —
+// this only shows if it was selected before the file disappeared); invalid
+// shows the parseTaskList error inline; valid renders the rows plus any
+// stall warning.
+function TaskPane(props: {
+  view: TaskListView | undefined;
+  accent: string;
+  errorColor: string;
+}): JSX.Element {
+  const view = () => props.view;
+  const valid = () => {
+    const v = view();
+    return v?.state === "valid" ? v : undefined;
+  };
+  const invalidError = () => {
+    const v = view();
+    return v?.state === "invalid" ? v.error : undefined;
+  };
+  return (
+    <box flexDirection="column">
+      <Show when={invalidError()}>
+        <text fg={props.errorColor}>tasks.json is invalid: {invalidError()}</text>
+      </Show>
+      <For each={valid()?.tasks ?? []}>
+        {(task) => (
+          <TaskRow
+            task={task}
+            active={valid()?.current?.id === task.id}
+            accent={props.accent}
+            errorColor={props.errorColor}
+          />
+        )}
+      </For>
+      <Show when={valid()?.stall}>
+        <text fg={props.errorColor}>{valid()?.stall}</text>
+      </Show>
+    </box>
+  );
+}
+
+// The tab strip: the run's own progress bar — "tasks nn/mm" carries strict
+// done/total in its title, and hides entirely while tasks.json is absent.
+// "workflow" is the default tab, so auto-open behavior is unchanged.
+function TabBar(props: {
+  active: "workflow" | "tasks";
+  tasksTitle: string | undefined;
+  accent: string;
+  onSelect: (tab: "workflow" | "tasks") => void;
+}): JSX.Element {
+  return (
+    <box flexDirection="row" gap={1}>
+      <text
+        fg={props.active === "workflow" ? props.accent : undefined}
+        attributes={props.active === "workflow" ? BOLD : undefined}
+        onMouseDown={() => props.onSelect("workflow")}
+      >
+        workflow
+      </text>
+      <Show when={props.tasksTitle !== undefined}>
+        <text>│</text>
+        <text
+          fg={props.active === "tasks" ? props.accent : undefined}
+          attributes={props.active === "tasks" ? BOLD : undefined}
+          onMouseDown={() => props.onSelect("tasks")}
+        >
+          {props.tasksTitle}
+        </text>
+      </Show>
+    </box>
+  );
+}
+
 function Picker(props: {
   api: TuiPluginApi;
   candidates: Array<{ runId: string; rootDir: string }>;
@@ -200,16 +317,43 @@ function OverlayContent(props: {
         category: "darkf",
         run: () => closeOverlay(),
       },
+      {
+        name: "darkf.tab.workflow",
+        title: "Workflow tab",
+        category: "darkf",
+        run: () => setTab("workflow"),
+      },
+      {
+        name: "darkf.tab.tasks",
+        title: "Tasks tab",
+        category: "darkf",
+        run: () => setTab("tasks"),
+      },
     ],
-    bindings: [{ key: "escape", cmd: "darkf.toggle", desc: "Back to chat" }],
+    bindings: [
+      { key: "escape", cmd: "darkf.toggle", desc: "Back to chat" },
+      { key: "1", cmd: "darkf.tab.workflow", desc: "Workflow tab" },
+      { key: "2", cmd: "darkf.tab.tasks", desc: "Tasks tab" },
+    ],
   });
   onCleanup(disposeLayer);
 
   const view = () => (props.runId ? store.views().get(props.runId) : undefined);
+  const taskView = () => (props.runId ? store.taskViews().get(props.runId) : undefined);
   const candidates = () =>
     props.runId
       ? []
       : store.unboundCandidates().map((e) => ({ runId: e.runId, rootDir: e.rootDir }));
+
+  // Tab "workflow" (the workflow graph) is the default, so auto-open behavior
+  // is unchanged; "tasks" only exists while tasks.json does (see TabBar).
+  const [tab, setTab] = createSignal<"workflow" | "tasks">("workflow");
+  const tasksTabTitle = (): string | undefined => {
+    const tv = taskView();
+    if (tv?.state === "invalid") return "tasks ?";
+    if (tv?.state === "valid") return `tasks ${tv.done}/${tv.total}`;
+    return undefined;
+  };
 
   // Manually clicked-open composite paths (see `renderNode`'s doc
   // comment). Scoped to this mount, not persisted — reopening the overlay
@@ -227,16 +371,33 @@ function OverlayContent(props: {
 
   return (
     <box flexDirection="column" height="100%" padding={1}>
-      <scrollbox flexGrow={1} minHeight={0} scrollY border title="plan">
+      <TabBar
+        active={tab()}
+        tasksTitle={tasksTabTitle()}
+        accent={api.theme.current.accent as unknown as string}
+        onSelect={setTab}
+      />
+      <scrollbox flexGrow={1} minHeight={0} scrollY border>
         <Show when={view()} fallback={<Picker api={api} candidates={candidates()} />}>
           {(resolvedView: () => PlanView) => (
-            <PlanGraph
-              view={resolvedView()}
-              accent={api.theme.current.accent as unknown as string}
-              errorColor={api.theme.current.error as unknown as string}
-              isOpen={isOpen}
-              toggleOpen={toggleOpen}
-            />
+            <Show
+              when={tab() === "workflow"}
+              fallback={
+                <TaskPane
+                  view={taskView()}
+                  accent={api.theme.current.accent as unknown as string}
+                  errorColor={api.theme.current.error as unknown as string}
+                />
+              }
+            >
+              <PlanGraph
+                view={resolvedView()}
+                accent={api.theme.current.accent as unknown as string}
+                errorColor={api.theme.current.error as unknown as string}
+                isOpen={isOpen}
+                toggleOpen={toggleOpen}
+              />
+            </Show>
           )}
         </Show>
       </scrollbox>

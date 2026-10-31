@@ -1,4 +1,12 @@
-import { type CrashReason, DONE, FAILED, type NodeResult, parseEventLog } from "../core/index.ts";
+import {
+  type CrashReason,
+  DONE,
+  FAILED,
+  type NodeResult,
+  parseEventLog,
+  type Task,
+  type TaskList,
+} from "../core/index.ts";
 import { journalTerminal, type RegistryStatus } from "./registry.ts";
 
 export interface JournalDigest {
@@ -105,6 +113,39 @@ export function foldJournal(journalText: string): JournalDigest {
 
   digest.runtimeMs = last.timestamp - first.timestamp;
   return digest;
+}
+
+// --- task lists (docs/specs/task-list-json/spec.md) ---
+
+export interface TaskListDigest {
+  /** Strict count: only `done` tasks — pending, in-progress, and failed all
+   *  count as not-done, so the plugin's `nn/mm` tab title is honest. */
+  done: number;
+  total: number;
+  /** The task the file says the run is on — its `in-progress` status is
+   *  authoritative (no journal join); `null` when nothing is in-progress. */
+  current: Task | null;
+  /** Non-null only when the list is incoherent about "where the run is":
+   *  more than one task in-progress. A `TaskList` carries no timestamps, so
+   *  a time-based stall isn't derivable here — staleness of the current row
+   *  stays covered by the workflow view's own stall warning. */
+  stall: string | null;
+}
+
+// Pure fold over a parsed TaskList for rendering: done/total counts, the
+// current in-progress item, and stall state. Never throws — input is an
+// already-narrowed TaskList (see `parseTaskList`).
+export function foldTaskList(list: TaskList): TaskListDigest {
+  const inProgress = list.tasks.filter((t) => t.status === "in-progress");
+  return {
+    done: list.tasks.filter((t) => t.status === "done").length,
+    total: list.tasks.length,
+    current: inProgress[0] ?? null,
+    stall:
+      inProgress.length > 1
+        ? `${inProgress.length} tasks in-progress — expected one; the list's current position is ambiguous`
+        : null,
+  };
 }
 
 export type TerminalState =

@@ -277,3 +277,37 @@ export interface RunResult {
   trace: StepTrace[];
   node: NodeStatus;
 }
+
+// --- Task lists ---
+//
+// One shared vocabulary for plan/dispatch task lists (docs/specs/task-list-json/spec.md):
+// workflows write it, `parseTaskList` narrows it, the OpenCode plugin renders it.
+// Lowercase MoSCoW and `satisfies` are the locked names — the validator has no
+// tolerance for the legacy shapes (`moscow`, task-side `requirements`).
+
+export type TaskStatus = "pending" | "in-progress" | "done" | "failed";
+export type TaskPriority = "must" | "should" | "could" | "won't";
+
+export interface Task {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  /** Requirement ids this task satisfies, when the list carries requirements. */
+  satisfies?: string[];
+  priority?: TaskPriority;
+}
+
+export interface TaskRequirement {
+  id: string; // "REQ-1", "NFR-2", "NG-1"
+  kind: "req" | "nfr" | "ng";
+  text: string;
+  priority?: TaskPriority;
+}
+
+export interface TaskList {
+  id: string;
+  /** Paths to the spec documents the tasks implement, when present. */
+  spec?: { prd?: string; design?: string };
+  requirements?: TaskRequirement[];
+  tasks: Task[];
+}

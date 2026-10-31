@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import {
   classifyTerminal,
   isPidAlive,
@@ -6,6 +7,7 @@ import {
   projectRoot,
   type RegistryEntry as RunEntry,
   readJournalText,
+  runArtifactsDir,
 } from "@psimona/darkf";
 
 /**
@@ -37,6 +39,13 @@ export function liveRunEntries(directory: string): RunEntry[] {
 
 export function bindingFor(runId: string): RunBinding | undefined {
   return bindings.get(runId);
+}
+
+/** The run's canonical task list (Decisions: Colocation) — the run root
+ *  joined to `tasks.json`, mirroring `journalPathFor`. The run's plan phase
+ *  writes it there; nothing copies it. */
+export function taskListPathFor(entry: RunEntry): string {
+  return join(runArtifactsDir(entry.rootDir, entry.runId), "tasks.json");
 }
 
 /** Binds a newly-seen run to `currentSessionID` (the session route current

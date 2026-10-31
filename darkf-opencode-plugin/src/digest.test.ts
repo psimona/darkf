@@ -6,7 +6,7 @@ import {
   type NodeResult,
   type WorkflowDef,
 } from "@psimona/darkf/src/core/index.ts";
-import { buildPlanView } from "./digest.ts";
+import { buildPlanView, buildTaskListView } from "./digest.ts";
 
 // A small synthetic workflow, not darkf-cli's `series-ordering` example —
 // deliberately: importing an example owned by a different package would be
@@ -191,5 +191,69 @@ describe("buildPlanView", () => {
     expect(view.workflowError).toBeUndefined();
     expect(view.root).toEqual([]);
     expect(view.current?.state).toBe("Implement");
+  });
+});
+
+describe("buildTaskListView", () => {
+  const TASKS = JSON.stringify({
+    id: "x",
+    tasks: [
+      { id: "T-1", title: "a", status: "done", satisfies: ["REQ-1"], priority: "must" },
+      { id: "T-2", title: "b", status: "in-progress", satisfies: ["REQ-2"] },
+      { id: "T-3", title: "c", status: "pending" },
+      { id: "T-4", title: "d", status: "failed" },
+    ],
+  });
+
+  test("no file (undefined text): absent — the state that hides the tasks tab", () => {
+    expect(buildTaskListView(R, undefined)).toEqual({ runId: R, state: "absent" });
+  });
+
+  test("unparseable JSON: invalid, with the parse error", () => {
+    const view = buildTaskListView(R, "{not json");
+    expect(view.state).toBe("invalid");
+    expect(view.state === "invalid" && view.error.length > 0).toBe(true);
+  });
+
+  test("valid JSON the validator rejects (bad status union): invalid, with the narrowing error", () => {
+    const view = buildTaskListView(
+      R,
+      JSON.stringify({ id: "x", tasks: [{ id: "T-1", title: "a", status: "archived" }] }),
+    );
+    expect(view.state).toBe("invalid");
+    expect(view.state === "invalid" && view.error).toContain("tasks[0].status");
+  });
+
+  test("valid: strict done/total, current straight from the file's in-progress status", () => {
+    const view = buildTaskListView(R, TASKS);
+    expect(view).toEqual({
+      runId: R,
+      state: "valid",
+      tasks: [
+        { id: "T-1", title: "a", status: "done", satisfies: ["REQ-1"], priority: "must" },
+        { id: "T-2", title: "b", status: "in-progress", satisfies: ["REQ-2"] },
+        { id: "T-3", title: "c", status: "pending" },
+        { id: "T-4", title: "d", status: "failed" },
+      ],
+      done: 1,
+      total: 4,
+      current: { id: "T-2", title: "b", status: "in-progress", satisfies: ["REQ-2"] },
+      stall: null,
+    });
+  });
+
+  test("valid but ambiguous about the current task: the stall warning surfaces", () => {
+    const view = buildTaskListView(
+      R,
+      JSON.stringify({
+        id: "x",
+        tasks: [
+          { id: "T-1", title: "a", status: "in-progress" },
+          { id: "T-2", title: "b", status: "in-progress" },
+        ],
+      }),
+    );
+    expect(view.state).toBe("valid");
+    expect(view.state === "valid" && view.stall).toContain("2 tasks in-progress");
   });
 });

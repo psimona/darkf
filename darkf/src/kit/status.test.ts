@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { type CrashReason, EXIT, FAILED, type NodeEvent, type NodeResult } from "../core/index.ts";
+import {
+  type CrashReason,
+  EXIT,
+  FAILED,
+  type NodeEvent,
+  type NodeResult,
+  type TaskList,
+} from "../core/index.ts";
 import {
   agentStallWarning,
   classifyTerminal,
   foldJournal,
   foldReport,
+  foldTaskList,
   nudgeWarning,
   stallWarning,
 } from "./status.ts";
@@ -419,5 +427,47 @@ describe("foldReport", () => {
       phase: "failed",
       event: "gave_up",
     });
+  });
+});
+
+describe("foldTaskList", () => {
+  const LIST: TaskList = {
+    id: "x",
+    tasks: [
+      { id: "T-1", title: "a", status: "done" },
+      { id: "T-2", title: "b", status: "done" },
+      { id: "T-3", title: "c", status: "in-progress" },
+      { id: "T-4", title: "d", status: "pending" },
+      { id: "T-5", title: "e", status: "failed" },
+    ],
+  };
+
+  test("strict counts: done only; failed/pending/in-progress are all not-done", () => {
+    expect(foldTaskList(LIST).done).toBe(2);
+    expect(foldTaskList(LIST).total).toBe(5);
+  });
+
+  test("current is the file's in-progress task, null when nothing is in-progress", () => {
+    expect(foldTaskList(LIST).current?.id).toBe("T-3");
+    expect(
+      foldTaskList({ id: "x", tasks: [{ id: "T-1", title: "a", status: "pending" }] }).current,
+    ).toBeNull();
+  });
+
+  test("no stall when exactly one (or zero) task is in-progress", () => {
+    expect(foldTaskList(LIST).stall).toBeNull();
+    expect(foldTaskList({ id: "x", tasks: [] }).stall).toBeNull();
+  });
+
+  test("stall when the list names more than one current task", () => {
+    const digest = foldTaskList({
+      id: "x",
+      tasks: [
+        { id: "T-1", title: "a", status: "in-progress" },
+        { id: "T-2", title: "b", status: "in-progress" },
+      ],
+    });
+    expect(digest.stall).toContain("2 tasks in-progress");
+    expect(digest.current?.id).toBe("T-1");
   });
 });

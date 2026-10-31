@@ -1,17 +1,18 @@
-import { type FSWatcher, watch } from "node:fs";
+import { type FSWatcher, readFileSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
 import { journalPathFor, type RegistryEntry as RunEntry, readJournalText } from "@psimona/darkf";
 import type { WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { createSignal } from "solid-js";
-import { buildPlanView, type PlanView } from "./digest.ts";
+import { buildPlanView, buildTaskListView, type PlanView, type TaskListView } from "./digest.ts";
 import {
   bindingFor,
   ensureBinding,
   forgetUnless,
   liveRunEntries,
   type RunBinding,
+  taskListPathFor,
   unboundOf,
 } from "./locate.ts";
 import { supervisorViewFor } from "./supervisor.ts";
@@ -58,6 +59,7 @@ function currentSessionID(api: TuiPluginApi): string | undefined {
 
 export interface LiveStore {
   views: () => ReadonlyMap<string, PlanView>;
+  taskViews: () => ReadonlyMap<string, TaskListView>;
   unboundCandidates: () => RunEntry[];
   bindingFor: (runId: string) => RunBinding | undefined;
 }
@@ -75,8 +77,10 @@ export function startStore(
   onNewRun: (binding: RunBinding) => void,
 ): LiveStore {
   const [views, setViews] = createSignal<ReadonlyMap<string, PlanView>>(new Map());
+  const [taskViews, setTaskViews] = createSignal<ReadonlyMap<string, TaskListView>>(new Map());
   const [unbound, setUnbound] = createSignal<RunEntry[]>([]);
   const watchers = new Map<string, FSWatcher>();
+  const taskWatchers = new Map<string, FSWatcher>();
 
   function ensureWatcher(entry: RunEntry): void {
     if (watchers.has(entry.runId)) return;
@@ -93,11 +97,41 @@ export function startStore(
     }
   }
 
+  // Same pattern as the journal watcher, one file over: tasks.json may not
+  // exist yet (the run hasn't written its plan) — retried next tick until
+  // the watch takes, with the 1s poll covering the gap.
+  function ensureTaskWatcher(entry: RunEntry): void {
+    if (taskWatchers.has(entry.runId)) return;
+    try {
+      const watcher = watch(taskListPathFor(entry), { persistent: false }, () => {
+        void refresh();
+      });
+      taskWatchers.set(entry.runId, watcher);
+    } catch {
+      // retried next tick, same as the journal watcher
+    }
+  }
+
   function dropStaleWatchers(liveIds: ReadonlySet<string>): void {
     for (const [runId, watcher] of watchers) {
       if (liveIds.has(runId)) continue;
       watcher.close();
       watchers.delete(runId);
+    }
+    for (const [runId, watcher] of taskWatchers) {
+      if (liveIds.has(runId)) continue;
+      watcher.close();
+      taskWatchers.delete(runId);
+    }
+  }
+
+  /** `undefined` = tasks.json absent (the tasks tab hides) — distinct from
+   *  `""`-ish contents, which count as invalid instead. */
+  function readTaskListText(entry: RunEntry): string | undefined {
+    try {
+      return readFileSync(taskListPathFor(entry), "utf8");
+    } catch {
+      return undefined;
     }
   }
 
@@ -113,15 +147,19 @@ export function startStore(
     }
 
     const next = new Map<string, PlanView>();
+    const nextTasks = new Map<string, TaskListView>();
     for (const entry of entries) {
       const workflow = await loadWorkflowCached(entry.workflowDir);
       const text = readJournalText(journalPathFor(entry));
       const supervisor = supervisorViewFor(api, bindingFor(entry.runId)?.supervisorSessionID);
       next.set(entry.runId, buildPlanView(entry.runId, workflow, text, supervisor));
+      nextTasks.set(entry.runId, buildTaskListView(entry.runId, readTaskListText(entry)));
       ensureWatcher(entry);
+      ensureTaskWatcher(entry);
     }
 
     setViews(next);
+    setTaskViews(nextTasks);
     setUnbound(unboundOf(entries));
     dropStaleWatchers(liveIds);
   }
@@ -132,7 +170,9 @@ export function startStore(
     clearInterval(interval);
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
+    for (const watcher of taskWatchers.values()) watcher.close();
+    taskWatchers.clear();
   });
 
-  return { views, unboundCandidates: unbound, bindingFor };
+  return { views, taskViews, unboundCandidates: unbound, bindingFor };
 }
