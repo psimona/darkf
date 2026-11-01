@@ -11,7 +11,8 @@ executing."
 ```ts
 export type NodeStatus =
   | { phase: "pending" }
-  | { phase: "running"; attempt: number; startedAt: number; lastHeartbeat: number; sessionId?: string }
+  | { phase: "running"; attempt: number; startedAt: number; lastHeartbeat: number; sessionId?: string;
+      limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number } }
   | { phase: "succeeded"; result: NodeResult }
   | { phase: "crashed"; reason: CrashReason; attempt: number };
 ```
@@ -26,7 +27,8 @@ all of them are required:
 | `running` | `startedAt` | Yes | Timestamp this attempt began. |
 | `running` | `lastHeartbeat` | Yes | Timestamp of the latest heartbeat, updated every 30s. |
 | `running` | `sessionId` | No | Only present once some earlier attempt's runner returned one. |
-| `crashed` | `reason` | Yes | A `CrashReason` — which of the nine shapes below. |
+| `running` | `limitBackoff` | No | Present only while the engine is waiting out a provider usage limit — which probe this is, when the next one fires, and the total waited so far. |
+| `crashed` | `reason` | Yes | A `CrashReason` — which of the ten shapes below. |
 | `crashed` | `attempt` | Yes | Which attempt number crashed. |
 
 A **crash** means the mechanism itself failed. It doesn't mean the
@@ -35,6 +37,7 @@ workflow reached a bad outcome on purpose.
 ```ts
 export type CrashReason =
   | { kind: "runner-error"; error: string }
+  | { kind: "usage-limit"; detail: string }
   | { kind: "timeout"; elapsedMs: number }
   | { kind: "malformed-result" }
   | { kind: "validation-failed"; message: string }
@@ -51,6 +54,7 @@ of each variant's payload is required too, with one exception:
 | Kind | Payload | What it means |
 |---|---|---|
 | `runner-error` | `error` (required) | A runner itself threw. |
+| `usage-limit` | `detail` (required) | The provider's usage limit stayed exhausted until the leaf's wait budget ran out — `detail` is the provider line that matched. |
 | `timeout` | `elapsedMs` (required) | The dispatch outran its `timeoutMs`. |
 | `malformed-result` | none | The reply didn't parse as a well-formed `NodeResult`. |
 | `validation-failed` | `message` (required) | The state's `validate` returned a rejection string. |
@@ -83,6 +87,14 @@ one escalates to the next when it doesn't apply.
 dispatch*. A crash consumes an attempt — `maxAttempts = retries + 1`.
 Once attempts run out, the leaf's crash becomes the run's crash.
 
+One exception: a `usage-limit` crash consumes no attempt. When a
+dispatch dies on the provider's usage limit, the engine waits
+(`usageLimitRetryMs`, default 30 minutes) and re-probes the same
+attempt — retry count untouched — for up to `usageLimitMaxWaitMs`
+(default 24 hours) per node visit. The wait also runs outside
+`timeoutMs`: each re-probe starts with a fresh per-attempt budget. At
+the cap the run ends in a terminal `usage-limit` crash.
+
 **`maxCycles`** (per composite, opt-in) bounds a *multi-leaf loop*: two
 nodes handing back and forth indefinitely, never tripping any single
 dispatch's timeout or retry count. Each full pass through the composite
@@ -98,7 +110,10 @@ exhausted and the run ends with a terminal `crashed` status, or a
 bound still has budget and the *same* leaf is dispatched again from
 scratch — not resumed. The next attempt's `DispatchInfo.previousFailure`
 carries what went wrong, so an agent runner can tell the model what to
-fix.
+fix. The usage-limit wait is the one exception to "from scratch": when
+the failed attempt left session evidence, the post-wait re-dispatch
+resumes that session with a short continuation prompt instead of
+replaying the full fresh prompt, so work done before the limit is kept.
 
 ## What you observe
 
@@ -118,6 +133,23 @@ since "gone quiet" and "about to finish" look identical from the
 journal alone. Deciding what to do about it is the job of whatever is
 watching — see [Plan with a task queue](../../guides/plan-with-a-task-queue/)'s
 supervisor section.
+
+**A usage-limit wait, not a crash.** When a dispatch exits non-zero
+because the provider's usage limit is exhausted, the engine waits and
+re-probes instead of burning a retry (see above). While it waits,
+`status` and `monitor` print the same one-line warn style as a stall:
+
+```text
+warn: usage limit — probe 3/48, next attempt in 22m
+```
+
+The probe denominator assumes the defaults (24 h budget, 30 min
+interval); `next attempt in` counts down to the re-probe. The run is
+alive the whole time — the supervisor can kill it at any moment, and
+the journal says exactly where the wait stopped. Classification is
+runner-side: the opencode runner recognizes limit-shaped errors
+(`usage limit`, `rate limit`, `limit exceeded`, `429`) on a non-zero
+exit; a script that calls an LLM itself owns its error handling.
 
 **A thrash, not (yet) a `cycle-limit` crash.** If one state's visit
 count is the run's highest and reaches 4 or more, `status` prints a

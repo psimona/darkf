@@ -1066,3 +1066,180 @@ test("FAILED's terminal journal entry carries the failing node's result as its e
     expect(last.status.result.output).toEqual({ kind: "cap_exceeded" });
   }
 });
+
+// --- usage-limit-backoff (docs/specs/usage-limit-backoff/spec.md) ---
+
+const usageLimitFailure = () =>
+  new AgentFailure("Usage limit reached for 5 hour.", {
+    agentSessionId: "sess-limit",
+    crashReason: { kind: "usage-limit", detail: "Usage limit reached for 5 hour." },
+  });
+
+test("a usage-limit failure waits the interval, then re-dispatches the SAME attempt without consuming a retry", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Agentic",
+    states: {
+      Agentic: { type: "agent", prompt: "do it", usageLimitRetryMs: 100, on: { ok: EXIT } },
+    },
+  };
+
+  const infos: DispatchInfo[] = [];
+  const dispatchTimes: number[] = [];
+  const agentRunner: AgentRunner = {
+    run: async (_id, _def, _handoff, info) => {
+      infos.push(info);
+      dispatchTimes.push(Date.now());
+      if (infos.length === 1) throw usageLimitFailure();
+      return { event: "ok" };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  expect(result.node.phase).toBe("succeeded");
+  expect(infos.length).toBe(2);
+  // Same outer attempt (retries: 0 default — success itself proves none was
+  // consumed), with the session id and the wall forwarded unchanged.
+  expect(infos[1]).toMatchObject({
+    attempt: 1,
+    agentSessionId: "sess-limit",
+    previousFailure: { kind: "usage-limit", detail: "Usage limit reached for 5 hour." },
+  });
+  // The retry fired after the shortened interval — not the 30-min default.
+  const waited = dispatchTimes[1]! - dispatchTimes[0]!;
+  expect(waited).toBeGreaterThanOrEqual(90);
+  expect(waited).toBeLessThan(2000);
+});
+
+test("while waiting, running heartbeats carry limitBackoff (probe, nextAttemptAt, waitedMs)", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Agentic",
+    states: {
+      Agentic: { type: "agent", prompt: "do it", usageLimitRetryMs: 100, on: { ok: EXIT } },
+    },
+  };
+
+  let calls = 0;
+  const agentRunner: AgentRunner = {
+    run: async () => {
+      calls++;
+      if (calls === 1) throw usageLimitFailure();
+      return { event: "ok" };
+    },
+  };
+
+  const result = await run({
+    workflow,
+    agentRunner,
+    scriptRunner: noopScript,
+    heartbeatMs: 20,
+  });
+  expect(result.node.phase).toBe("succeeded");
+
+  const journalPath = join(testRootDir, ".darkf", "run", result.runId, "journal.jsonl");
+  const events = readFileSync(journalPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l) as NodeEvent);
+  const waiting = events.filter(
+    (e) => e.status.phase === "running" && e.status.limitBackoff !== undefined,
+  );
+  // Wait-start emit (immediate, nudge-start precedent) + interval heartbeats
+  // during the 100ms sleep at 20ms cadence.
+  expect(waiting.length).toBeGreaterThanOrEqual(2);
+  const first = waiting[0]!;
+  if (first.status.phase === "running") {
+    expect(first.status.limitBackoff).toEqual({
+      probe: 1,
+      nextAttemptAt: expect.any(Number),
+      waitedMs: 100,
+    });
+    expect(first.status.limitBackoff!.nextAttemptAt).toBeGreaterThan(first.status.lastHeartbeat);
+  }
+});
+
+test("exhausting usageLimitMaxWaitMs crashes with the last usage-limit reason; probe count and total wait journaled", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Agentic",
+    states: {
+      Agentic: {
+        type: "agent",
+        prompt: "do it",
+        usageLimitRetryMs: 50,
+        usageLimitMaxWaitMs: 120,
+        on: { ok: EXIT },
+      },
+    },
+  };
+
+  let calls = 0;
+  const agentRunner: AgentRunner = {
+    run: async () => {
+      calls++;
+      throw usageLimitFailure();
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  // Waits: 50 (probe 1), then 100 <= 120 (probe 2); the third failure sees
+  // 100 + 50 > 120 and takes the crashed() path. Never a fourth dispatch.
+  expect(calls).toBe(3);
+  expect(result.node.phase).toBe("crashed");
+  if (result.node.phase === "crashed") {
+    expect(result.node.reason).toEqual({
+      kind: "usage-limit",
+      detail: "Usage limit reached for 5 hour.",
+    });
+  }
+
+  const journalPath = join(testRootDir, ".darkf", "run", result.runId, "journal.jsonl");
+  const events = readFileSync(journalPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l) as NodeEvent);
+  const lastWait = events
+    .filter((e) => e.status.phase === "running" && e.status.limitBackoff !== undefined)
+    .at(-1);
+  expect(lastWait).toBeDefined();
+  if (lastWait!.status.phase === "running") {
+    expect(lastWait!.status.limitBackoff).toEqual({
+      probe: 2,
+      nextAttemptAt: expect.any(Number),
+      waitedMs: 100,
+    });
+  }
+});
+
+test("the attempt deadline is recomputed after each usage-limit wait, so a slept interval never eats the next dispatch's timeout", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Agentic",
+    states: {
+      Agentic: {
+        type: "agent",
+        prompt: "do it",
+        timeoutMs: 80,
+        usageLimitRetryMs: 50,
+        on: { ok: EXIT },
+      },
+    },
+  };
+
+  let calls = 0;
+  const agentRunner: AgentRunner = {
+    run: async () => {
+      calls++;
+      if (calls === 1) throw usageLimitFailure();
+      // Longer than the ORIGINAL budget's remainder (80ms - ~50ms slept) but
+      // shorter than a recomputed one — without the recompute this surfaces
+      // as `timeout`, with it the dispatch succeeds.
+      await new Promise((r) => setTimeout(r, 60));
+      return { event: "ok" };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  expect(calls).toBe(2);
+  expect(result.node.phase).toBe("succeeded");
+});

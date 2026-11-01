@@ -44,6 +44,7 @@ import {
   classifyTerminal,
   foldJournal,
   foldReport,
+  limitWarning,
   nudgeWarning,
   stallWarning,
   type TerminalState,
@@ -695,6 +696,8 @@ function printDigest(entry: RegistryEntry, state: TerminalState, journalText: st
     if (agentStall) console.log(`warn: ${agentStall}`);
     const nudge = nudgeWarning(digest);
     if (nudge) console.log(`warn: ${nudge}`);
+    const limit = limitWarning(digest);
+    if (limit) console.log(`warn: ${limit}`);
   }
   if (digest.runtimeMs !== null) console.log(`runtime: ${formatMs(digest.runtimeMs)}`);
   if (state === "orphaned") console.log("orphaned: true");
@@ -831,6 +834,7 @@ async function monitorRun(entry: RegistryEntry, windowSec: number, once: boolean
   const pid = entry.pid;
   const deadline = Date.now() + windowSec * 1000;
   const hinted = new Set<string>();
+  let lastLimitProbe = 0;
 
   // Open the window: if the begin marker is already there, print it once as
   // context (not a transition) and tail only lines added from this point on.
@@ -853,6 +857,18 @@ async function monitorRun(entry: RegistryEntry, windowSec: number, once: boolean
     }
     lastSeen = events.length;
     dwellHint(events, entry.runId, hinted);
+
+    // Usage-limit wait (docs/specs/usage-limit-backoff/spec.md): re-render
+    // the wait line when the probe advances, so a monitored wait shows the
+    // countdown instead of silence — same one-line warn style as the status
+    // digest's stallWarning/nudgeWarning.
+    const limitDigest = foldJournal(text);
+    const backoff = limitDigest.current?.limitBackoff;
+    if (limitDigest.current?.phase === "running" && backoff && backoff.probe !== lastLimitProbe) {
+      const warning = limitWarning(limitDigest);
+      if (warning) console.log(`warn: ${warning}`);
+      lastLimitProbe = backoff.probe;
+    }
 
     // Re-check liveness every sub-poll: the journal's last line is authoritative
     // for succeeded/crashed, and a dead PID with no terminal marker is

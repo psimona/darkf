@@ -16,8 +16,8 @@ Two node types, one dispatch contract:
 - **script** — plain TypeScript, run in-process.
 
 Crashes stay crashes and verdicts stay verdicts — a failing agent never
-reaches your routing logic. Retries, timeouts, cycle limits, and the
-journal are the engine's job, not your workflow's.
+reaches your routing logic. Retries, timeouts, usage-limit backoff,
+cycle limits, and the journal are the engine's job, not your workflow's.
 
 ## Install
 

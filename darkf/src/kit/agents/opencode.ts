@@ -152,6 +152,38 @@ function contextBlock(rootDir: string, runId: string): string {
   }
 }
 
+// Usage-limit detection (docs/specs/usage-limit-backoff/spec.md, Detection):
+// a provider quota wall surfaces as an API-level error — opencode exits
+// non-zero with the provider's message in its output. Scan stderr and
+// non-JSON stdout lines ONLY: stdout's NDJSON lines are event objects, i.e.
+// agent-authored content — a limit-shaped string inside one must never match
+// (a false positive turns a real crash into a silent hours-long wait; the
+// worse error). Markers, case-insensitive, from the 2026-11-01 live capture
+// ("Usage limit reached for 5 hour. Your limit will reset at ..."): the
+// quoted reset time is display text darkf never parses — see the spec's Wait
+// section for why a fixed interval is the honest response. Returns the first
+// matched line; callers consult this on the non-zero-exit branch only, so a
+// limit-shaped string on the exit-0 + missing-handoff path stays a
+// `handoff-missing` on its existing nudge/repair path.
+const USAGE_LIMIT_MARKERS = ["usage limit", "rate limit", "limit exceeded", "429"];
+
+export function matchUsageLimit(stderr: string, stdout: string): string | undefined {
+  for (const text of [stderr, stdout]) {
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        JSON.parse(line);
+        continue; // event object — agent-authored, never matched
+      } catch {
+        // not JSON — runner/provider output
+      }
+      const lowered = line.toLowerCase();
+      if (USAGE_LIMIT_MARKERS.some((marker) => lowered.includes(marker))) return line;
+    }
+  }
+  return undefined;
+}
+
 export const opencodeRunner: AgentRunner = {
   kind: "opencode",
   async run(id, def, handoff, info: DispatchInfo, onProgress?: (p: AgentProgress) => void) {
@@ -186,9 +218,26 @@ export const opencodeRunner: AgentRunner = {
     // "No -s outside a nudge" note below.
     const nudge = nudgeMessage(info, path);
 
+    // Post-limit continuation (docs/specs/usage-limit-backoff/spec.md, Wait
+    // and resume): when the engine re-dispatches this attempt after waiting
+    // out a usage limit, resume the interrupted session with a short
+    // continuation prompt instead of replaying the full fresh prompt — the
+    // dispatch itself doubles as the limit probe (a still-limited provider
+    // rejects it before processing; a lifted limit continues mid-flight with
+    // all pre-wall work intact). A present agentSessionId IS the evidence
+    // gate: the runner only ever attaches one when `scanStepFinish` counted
+    // step events (stepCount > 0), the same bar that makes `-s` safe for
+    // nudges. Without a session id the dispatch is fresh, exactly as before.
+    const continuation =
+      info.previousFailure?.kind === "usage-limit" && info.agentSessionId !== undefined
+        ? `A provider usage limit interrupted your previous turn. Continue where you left off.\n\n${handoffContractText(path)}`
+        : undefined;
+
     let prompt: string;
     if (nudge) {
       prompt = nudge;
+    } else if (continuation) {
+      prompt = continuation;
     } else {
       const promptParts: string[] = [];
 
@@ -225,16 +274,17 @@ export const opencodeRunner: AgentRunner = {
     // terminal runner crash. `scanStepFinish`'s `stepCount` guard (above) is
     // what makes `-s` safe again — the hang's root cause was resuming a
     // session with no evidence it had done anything, not resuming as such —
-    // but it's deliberately only ever used for the one case this spec
-    // scoped it to (a nudge, immediately after a nudgeable failure in the
-    // same outer attempt). A fresh or exhausted-nudge dispatch always
-    // starts a brand-new session, exactly as today, even when
-    // `info.agentSessionId` happens to be set.
+    // but it's deliberately only ever used for two explicitly-scoped cases:
+    // a nudge (immediately after a nudgeable failure in the same outer
+    // attempt) and the post-limit continuation (usage-limit-backoff spec —
+    // same evidence gate, same reasoning). A fresh or exhausted-nudge
+    // dispatch always starts a brand-new session, exactly as today, even
+    // when `info.agentSessionId` happens to be set.
     const bin = Bun.which("opencode") ?? "opencode";
     const args = [
       bin,
       "run",
-      ...(nudge ? ["-s", info.agentSessionId!] : []),
+      ...(nudge || continuation ? ["-s", info.agentSessionId!] : []),
       ...(auto ? ["--auto"] : []),
       "-m",
       model,
@@ -285,6 +335,19 @@ export const opencodeRunner: AgentRunner = {
       const reason = `opencode exited ${exitCode}: ${stderr.trim().slice(-400)}`;
       lastFailures.set(dispatchKey, reason);
       const scan = scanStepFinish(stdout);
+      // Usage-limit classification (docs/specs/usage-limit-backoff/spec.md):
+      // consulted on this non-zero-exit branch ONLY, before the generic
+      // throw — a quota wall is a known temporary condition, and the engine
+      // waits it out instead of burning retries against it. The session id
+      // stays evidence-gated (stepCount > 0) exactly as below. No match
+      // keeps the existing runner-error throw unchanged.
+      const limitLine = matchUsageLimit(stderr, stdout);
+      if (limitLine !== undefined) {
+        throw new AgentFailure(reason, {
+          agentSessionId: scan.stepCount > 0 ? scan.sessionId : undefined,
+          crashReason: { kind: "usage-limit", detail: limitLine },
+        });
+      }
       throw new AgentFailure(reason, {
         agentSessionId: scan.stepCount > 0 ? scan.sessionId : undefined,
         crashReason: { kind: "runner-error", error: reason },

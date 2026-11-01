@@ -29,6 +29,13 @@ import { createJsonlEventLogger } from "./eventLog.ts";
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000; // 1h — high default ceiling, not a tuning knob
 const DEFAULT_MAX_STEPS = 1000;
+// Usage-limit backoff defaults (docs/specs/usage-limit-backoff/spec.md) —
+// the leaf-config fields on BaseLeafDef fall back to these. Fixed 30-min
+// probe interval, deliberately not the provider message's quoted reset time
+// (its timezone is not the supervisor's); 24h bounds the total wait per
+// node visit before the run crashes with the last usage-limit reason.
+const DEFAULT_USAGE_LIMIT_RETRY_MS = 30 * 60 * 1000;
+const DEFAULT_USAGE_LIMIT_MAX_WAIT_MS = 24 * 60 * 60 * 1000;
 // Bounded in-session repair attempts per outer attempt (see
 // docs/specs/session-nudge/spec.md) — not a `def.retries`-style tuning
 // knob, deliberately fixed.
@@ -61,6 +68,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       },
     );
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 const defaultScriptRunner: ScriptRunner = {
@@ -203,6 +214,11 @@ export async function run(opts: RunOptions): Promise<RunResult> {
     let reason: CrashReason | undefined;
     let agentSessionId: string | undefined;
     let attempt = 0;
+    // Usage-limit wait bookkeeping — per node visit, never per attempt:
+    // waits consume no retry, so the wait budget spans every attempt of
+    // this visit (docs/specs/usage-limit-backoff/spec.md).
+    let limitWaitedMs = 0;
+    let limitProbes = 0;
 
     attemptLoop: for (attempt = 1; attempt <= maxAttempts; attempt++) {
       // Fixed once per outer attempt: every dispatch this attempt makes — the
@@ -210,7 +226,12 @@ export async function run(opts: RunOptions): Promise<RunResult> {
       // SAME remaining budget, so a nudge sequence can't multiply the
       // configured per-attempt timeout (docs/specs/session-nudge/spec.md,
       // "Dispatch loop change").
-      const deadline = Date.now() + timeoutMs;
+      //
+      // Usage-limit exception (same spec family, usage-limit-backoff D-7):
+      // recomputed after every usage-limit wait, so a slept interval never
+      // eats into the next dispatch's timeout — `timeoutMs` bounds a single
+      // dispatch, never a wait.
+      let deadline = Date.now() + timeoutMs;
       let nudgeAttempt = 0;
 
       for (;;) {
@@ -233,7 +254,10 @@ export async function run(opts: RunOptions): Promise<RunResult> {
         const onProgress = (p: AgentProgress) => {
           latestProgress = p;
         };
-        const runningStatus = (lastHeartbeat: number): NodeStatus => ({
+        const runningStatus = (
+          lastHeartbeat: number,
+          limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number },
+        ): NodeStatus => ({
           phase: "running",
           attempt,
           startedAt,
@@ -246,6 +270,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
               }
             : {}),
           ...(nudgeAttempt > 0 ? { nudgeAttempt, nudgeReason } : {}),
+          ...(limitBackoff ? { limitBackoff } : {}),
         });
         emit(runningStatus(startedAt), current, scopePath);
         // Live-runtime heartbeats: journal a refreshed `running` status while the
@@ -307,6 +332,45 @@ export async function run(opts: RunOptions): Promise<RunResult> {
           }
           if (isNudgeable(reason) && agentSessionId && nudgeAttempt < NUDGE_LIMIT) {
             nudgeAttempt++;
+            continue;
+          }
+          // Usage-limit (docs/specs/usage-limit-backoff/spec.md, Wait and
+          // resume): a quota wall is not a failed attempt — it consumes no
+          // retry. Sleep usageLimitRetryMs (heartbeating the wait), then
+          // re-dispatch this same attempt; the existing
+          // previousFailure/agentSessionId threading below is what makes the
+          // runner resume the interrupted session. At the cap, the existing
+          // crashed() path after the attempt loop records the last
+          // usage-limit reason — attempt untouched, so the crash shows no
+          // retry consumed.
+          if (reason.kind === "usage-limit") {
+            const retryMs = def.usageLimitRetryMs ?? DEFAULT_USAGE_LIMIT_RETRY_MS;
+            const maxWaitMs = def.usageLimitMaxWaitMs ?? DEFAULT_USAGE_LIMIT_MAX_WAIT_MS;
+            if (limitWaitedMs + retryMs > maxWaitMs) {
+              break attemptLoop;
+            }
+            limitWaitedMs += retryMs;
+            limitProbes++;
+            const limitBackoff = {
+              probe: limitProbes,
+              nextAttemptAt: Date.now() + retryMs,
+              waitedMs: limitWaitedMs,
+            };
+            // Journal the wait immediately (nudge-start precedent: not gated
+            // behind a heartbeat cadence), then heartbeat it for as long as
+            // it lasts, so status/monitor show the wait instead of silence.
+            emit(runningStatus(Date.now(), limitBackoff), current, scopePath);
+            const waitHeartbeat =
+              heartbeatMs > 0
+                ? setInterval(
+                    () => emit(runningStatus(Date.now(), limitBackoff), current, scopePath),
+                    heartbeatMs,
+                  )
+                : undefined;
+            waitHeartbeat?.unref?.();
+            await sleep(retryMs);
+            waitHeartbeat && clearInterval(waitHeartbeat);
+            deadline = Date.now() + timeoutMs;
             continue;
           }
           continue attemptLoop;

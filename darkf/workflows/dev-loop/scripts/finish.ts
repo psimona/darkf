@@ -13,7 +13,7 @@ import type { DispatchInfo, NodeResult } from "@psimona/darkf/src/core/index.ts"
 //   - refuses unless master is an ancestor of the branch (master must not
 //     have moved mid-run — the only case where the squash could conflict);
 //   - rolls back (reset --hard + checkout back) on any git failure.
-const FEATURE = "task-list-json";
+const FEATURE = "usage-limit-backoff";
 const ALLOWED = [
   "docs/",
   "darkf/src/",

@@ -53,6 +53,10 @@ export interface BaseLeafDef {
   retries?: number;
   /** Engine-enforced ceiling on one dispatch attempt. Default 1h. */
   timeoutMs?: number;
+  /** Fixed interval between usage-limit re-probes after a provider quota wall. Default 30 min. See docs/specs/usage-limit-backoff/spec.md. */
+  usageLimitRetryMs?: number;
+  /** Total wait budget per node visit for usage-limit backoff. At the cap the run crashes with the last usage-limit reason. Default 24h. */
+  usageLimitMaxWaitMs?: number;
   /**
    * Plain code check run against a well-formed NodeResult before it's accepted
    * as `succeeded`. Return a failure message to reject it, or undefined to
@@ -216,6 +220,9 @@ export type NodeStatus =
       nudgeAttempt?: number;
       /** The nudgeable `CrashReason` kind that triggered this nudge. */
       nudgeReason?: CrashReason["kind"];
+      /** Present only while the engine is waiting out a provider usage-limit
+       *  backoff for this attempt — see docs/specs/usage-limit-backoff/spec.md. */
+      limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number };
     }
   | { phase: "succeeded"; result: NodeResult }
   | { phase: "failed"; result: NodeResult }
@@ -223,6 +230,7 @@ export type NodeStatus =
 
 export type CrashReason =
   | { kind: "runner-error"; error: string }
+  | { kind: "usage-limit"; detail: string }
   | { kind: "timeout"; elapsedMs: number }
   | { kind: "handoff-missing" }
   | { kind: "handoff-unparseable"; parseError: string }

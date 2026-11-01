@@ -32,10 +32,12 @@ JSON. Exits `1` if the worker dies during its own startup.
 ### `darkf status [--run <runId>]`
 
 Reads the journal for the given run and prints a digest: current node,
-visit counts, any crash reason, elapsed/runtime. Without `--run`, resolves
-to whichever run is currently cached as `running` — once a run has
-finished, pass its id explicitly (exit `7`, "nothing to monitor", names
-the most recent finished run as a hint if omitted).
+visit counts, any crash reason, elapsed/runtime. While a node is
+waiting out a provider usage limit, the digest also carries a
+`warn: usage limit — probe N/48, next attempt in Xm` line. Without
+`--run`, resolves to whichever run is currently cached as `running` —
+once a run has finished, pass its id explicitly (exit `7`, "nothing to
+monitor", names the most recent finished run as a hint if omitted).
 
 | Exit code | Meaning |
 |---|---|
@@ -50,7 +52,9 @@ the most recent finished run as a hint if omitted).
 ### `darkf monitor [--run <runId>] [--window <seconds>] [--once]`
 
 Tails the journal, printing each new transition as it's written, until the
-run finishes, `--window` elapses (default 30s), or `--once` is set.
+run finishes, `--window` elapses (default 30s), or `--once` is set. While
+a node waits out a provider usage limit, the wait line re-prints each
+time the probe count advances.
 Returns `6` ("still running") if the window elapses or `--once` is passed
 without the run finishing; otherwise the same exit codes as `status`.
 

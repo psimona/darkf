@@ -31,6 +31,10 @@ export interface JournalDigest {
     agentStepCount?: number;
     /** Milliseconds idle as of the last heartbeat — see `agentStallWarning`. */
     agentIdleMs?: number;
+    /** Present while the engine is waiting out a provider usage-limit
+     *  backoff for the current attempt — see `limitWarning` and
+     *  docs/specs/usage-limit-backoff/spec.md. */
+    limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number };
   } | null;
   crash?: { attempt: number; reason: CrashReason };
   visits: Record<string, number>;
@@ -88,6 +92,7 @@ export function foldJournal(journalText: string): JournalDigest {
           nudgeReason: lastStatus.nudgeReason,
           agentStepCount: lastStatus.agentStepCount,
           agentIdleMs: lastStatus.agentIdleMs,
+          limitBackoff: lastStatus.limitBackoff,
         }
       : {}),
   };
@@ -320,4 +325,24 @@ export function nudgeWarning(digest: JournalDigest): string | null {
   const { nudgeAttempt, nudgeReason } = digest.current ?? {};
   if (digest.current?.phase !== "running" || nudgeAttempt === undefined) return null;
   return `nudging attempt ${nudgeAttempt}/3 (${nudgeReason}) — supervisor decides`;
+}
+
+// Display-only usage-limit config defaults (docs/specs/usage-limit-backoff/
+// spec.md), mirroring how this module already treats other engine constants
+// as display knowledge, not a shared dependency. The denominator assumes the
+// defaults; a leaf overriding usageLimitRetryMs/usageLimitMaxWaitMs renders
+// a best-effort total until leaf config is recorded in the journal.
+const USAGE_LIMIT_RETRY_MS = 30 * 60_000;
+const USAGE_LIMIT_MAX_WAIT_MS = 24 * 60 * 60_000;
+
+/** Warn-only usage-limit wait note, same contract as `stallWarning`: folded
+ *  from the latest running status's `limitBackoff` — present only while the
+ *  engine sleeps between usage-limit re-probes, so the supervisor sees the
+ *  wait instead of silence. Purely a display string, never acts. */
+export function limitWarning(digest: JournalDigest, now: number = Date.now()): string | null {
+  const backoff = digest.current?.limitBackoff;
+  if (digest.current?.phase !== "running" || backoff === undefined) return null;
+  const totalProbes = Math.ceil(USAGE_LIMIT_MAX_WAIT_MS / USAGE_LIMIT_RETRY_MS);
+  const minutes = Math.max(0, Math.round((backoff.nextAttemptAt - now) / 60_000));
+  return `usage limit — probe ${backoff.probe}/${totalProbes}, next attempt in ${minutes}m`;
 }

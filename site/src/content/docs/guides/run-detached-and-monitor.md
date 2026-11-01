@@ -31,6 +31,12 @@ needed. Exit code doubles as the answer: `0` succeeded, `1` crashed, `2`
 orphaned (worker PID is gone, journal has no terminal marker), `3`
 running. Pass `--run <runId>` when more than one run is live.
 
+While a node is waiting out a provider usage limit, the digest prints a
+wait line — `warn: usage limit — probe 3/48, next attempt in 22m` — so
+an overnight quota wall reads as a wait, not silence. The run is alive;
+the exit code stays `3` ("running") until the limit lifts or the wait
+budget runs out.
+
 ### Watching live
 
 ```sh
@@ -41,6 +47,8 @@ Tails the journal and prints each transition as it's written, for up to
 `--window` seconds (default 30) before returning `6` ("still running") so
 a calling script can decide whether to keep waiting. `--once` checks and
 returns immediately instead of polling. Exit codes match `status`'s.
+During a usage-limit wait, the wait line re-prints each time the probe
+count advances.
 
 ### After it's done
 

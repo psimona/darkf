@@ -82,6 +82,10 @@ built-in options.
 - `retries: 2` on a leaf bounds reattempts after a crash (default: 0, no
   retry).
 - `timeoutMs` caps one dispatch attempt (default: 1 hour).
+- `usageLimitRetryMs` / `usageLimitMaxWaitMs` tune how a leaf waits out
+  a provider usage limit (defaults: re-probe every 30 minutes, give up
+  after 24 hours). A wait consumes no retry attempt and no `timeoutMs`
+  budget; see [Failure modes](../../concepts/failure-modes/).
 - `validate(result, handoff)` runs a plain code check against a result
   before it's accepted as `succeeded`; returning a string rejects it as a
   crash, consuming a retry attempt exactly like a runner throwing would.

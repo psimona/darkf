@@ -13,6 +13,7 @@ import {
   foldJournal,
   foldReport,
   foldTaskList,
+  limitWarning,
   nudgeWarning,
   stallWarning,
 } from "./status.ts";
@@ -294,6 +295,72 @@ test("nudgeWarning fires only for a running node with an active nudge", () => {
     ]),
   );
   expect(nudgeWarning(done)).toBeNull();
+});
+
+function runningWithLimitBackoff(
+  state: string,
+  heartbeatTs: number,
+  backoff: { probe: number; nextAttemptAt: number; waitedMs: number },
+): NodeEvent {
+  return {
+    runId: R,
+    state,
+    scopePath: [],
+    status: {
+      phase: "running",
+      attempt: 1,
+      startedAt: heartbeatTs,
+      lastHeartbeat: heartbeatTs,
+      limitBackoff: backoff,
+    },
+    timestamp: heartbeatTs,
+  };
+}
+
+test("foldJournal surfaces a running node's limitBackoff, omits it when absent", () => {
+  const waiting = foldJournal(
+    journalText([
+      begin(),
+      runningWithLimitBackoff("Write", 2000, { probe: 1, nextAttemptAt: 2600, waitedMs: 600 }),
+    ]),
+  );
+  expect(waiting.current?.limitBackoff).toEqual({ probe: 1, nextAttemptAt: 2600, waitedMs: 600 });
+
+  const plain = foldJournal(journalText([begin(), running("Write", 2000)]));
+  expect(plain.current?.limitBackoff).toBeUndefined();
+});
+
+test("limitWarning renders the probe countdown from the latest waiting heartbeat", () => {
+  const NOW = 3_600_000;
+  // 22 minutes until the next attempt; defaults give a 24h/30min = 48 total.
+  const digest = foldJournal(
+    journalText([
+      begin(),
+      running("Write", NOW - 8 * 60_000),
+      runningWithLimitBackoff("Write", NOW - 1_000, {
+        probe: 3,
+        nextAttemptAt: NOW + 22 * 60_000,
+        waitedMs: 90 * 60_000,
+      }),
+    ]),
+  );
+  expect(limitWarning(digest, NOW)).toBe("usage limit — probe 3/48, next attempt in 22m");
+});
+
+test("limitWarning is null for a plain running heartbeat, and once the wait ends (latest running status has no limitBackoff)", () => {
+  const plain = foldJournal(journalText([begin(), running("Write", 2000)]));
+  expect(limitWarning(plain)).toBeNull();
+
+  // The post-wait re-dispatch's running status carries no limitBackoff — the
+  // warning must clear while the probe dispatch itself is running.
+  const probing = foldJournal(
+    journalText([
+      begin(),
+      runningWithLimitBackoff("Write", 2000, { probe: 1, nextAttemptAt: 2600, waitedMs: 600 }),
+      running("Write", 2600),
+    ]),
+  );
+  expect(limitWarning(probing)).toBeNull();
 });
 
 test("foldJournal counts distinct visits, not retry attempts", () => {

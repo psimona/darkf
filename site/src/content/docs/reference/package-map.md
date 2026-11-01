@@ -15,7 +15,8 @@ darkf ships two packages:
     never parsed back), `journal.ts` (the JSONL event shape). Zero
     runtime dependencies — nothing it depends on, by design.
   - **`engine/`** — the interpreter. `run.ts` is the dispatch loop:
-    retries, per-attempt timeouts, the `validate` hook, cycle-limit and
+    retries, per-attempt timeouts, the `validate` hook, usage-limit
+    backoff, cycle-limit and
     `maxSteps` circuit breakers, unconditional journaling. Depends only
     on `core/`.
   - **`kit/`** — the workflow-authoring library: the two built-in

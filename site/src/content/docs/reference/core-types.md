@@ -23,6 +23,8 @@ export interface AgentStateDef {
   next?: string;
   retries?: number;
   timeoutMs?: number;
+  usageLimitRetryMs?: number;
+  usageLimitMaxWaitMs?: number;
   validate?: (result: NodeResult, handoff: NodeResult) => string | undefined;
 }
 
@@ -33,6 +35,8 @@ export interface ScriptStateDef {
   next?: string;
   retries?: number;
   timeoutMs?: number;
+  usageLimitRetryMs?: number;
+  usageLimitMaxWaitMs?: number;
   validate?: (result: NodeResult, handoff: NodeResult) => string | undefined;
 }
 
@@ -71,12 +75,14 @@ export interface ScriptRunner {
 
 export type NodeStatus =
   | { phase: "pending" }
-  | { phase: "running"; attempt: number; startedAt: number; lastHeartbeat: number; sessionId?: string }
+  | { phase: "running"; attempt: number; startedAt: number; lastHeartbeat: number; sessionId?: string;
+      limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number } }
   | { phase: "succeeded"; result: NodeResult }
   | { phase: "crashed"; reason: CrashReason; attempt: number };
 
 export type CrashReason =
   | { kind: "runner-error"; error: string }
+  | { kind: "usage-limit"; detail: string }
   | { kind: "timeout"; elapsedMs: number }
   | { kind: "malformed-result" }
   | { kind: "validation-failed"; message: string }

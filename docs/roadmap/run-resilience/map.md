@@ -100,6 +100,15 @@ to diagnose it without opening opencode's server log.
   last tool error, step count, etc.) — observability only, no effect on
   retry or nudge behavior. Unblocked: session-nudge's kind split
   (`handoff-missing`/`handoff-unparseable`) has landed.
+- **usage-limit-backoff** — spec approved (2026-11-01), ready to build:
+  `docs/specs/usage-limit-backoff/spec.md`. Detect a provider usage-limit
+  failure (new `usage-limit` `CrashReason`, markers confirmed against a
+  live capture), then wait and re-probe at a fixed interval (default
+  30 min, capped at 24 h) instead of burning all retries against the
+  quota wall — reset timestamps in the provider message are unreliable
+  (wrong timezone), so fixed-interval polling is deliberate. Sits next to
+  provider-health-gate: that ticket fail-fasts a *hung* backend; this one
+  waits out a *quota wall*.
 
 ## Not yet specified (fog)
 
@@ -113,7 +122,12 @@ to diagnose it without opening opencode's server log.
   `provider-unhealthy` reason instead of a 31-minute retry burn. Needs a
   design of its own (which endpoint, what cost, cached for how long);
   agent-liveness covers the during-dispatch half only — problem captured,
-  not designed — `docs/specs/provider-health-gate/spec.md`.
+  not designed — `docs/specs/provider-health-gate/spec.md`. Scope note
+  (2026-11-01): usage-limit-backoff (approved) covers the *explicit
+  rejection* family — a quota wall now fails fast into a named
+  `usage-limit` reason and waits — and lands the runner-side marker
+  classification the gate will reuse. The *hang* family (accepted
+  connection, no completion, no error) remains this gate's own scope.
 
 ## Out of scope
 

@@ -34,8 +34,8 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
-const RUN_DATE = "2026-10-31";
-const FEATURE = "task-list-json";
+const RUN_DATE = "2026-11-01";
+const FEATURE = "usage-limit-backoff";
 
 export const workflow: WorkflowDef = {
   initial: "Begin",
@@ -60,18 +60,18 @@ export const workflow: WorkflowDef = {
           retries: 1,
           prompt: `Implement the ${FEATURE} feature in this repository.
 
-First read docs/specs/${FEATURE}/spec.md. It is the contract: its Design sketch and both Decisions sections are locked — implement exactly what they specify, nothing more.
+First read docs/specs/${FEATURE}/spec.md. It is the contract: its Detection, Wait-and-resume, and Non-goals sections are locked — implement exactly what they specify, nothing more. docs/specs/${FEATURE}/design.md carries the component wiring and test plan; read it second.
 
-Resume semantics: if the working tree already implements the spec, verify that instead of re-implementing — read the existing darkf/src/core/tasks.ts and darkf-opencode-plugin/src/digest.ts, confirm they match the spec, and finish "implemented" without rewriting.
+Resume semantics: if the working tree already implements the spec, verify that instead of re-implementing — read darkf/src/core/types.ts, darkf/src/engine/run.ts, and darkf/src/kit/agents/opencode.ts, confirm they match the spec, and finish "implemented" without rewriting.
 
 Deliverables (when not already present):
-- the TaskList type family in darkf/src/core/types.ts per the spec's Design sketch (TaskStatus, TaskPriority, Task, TaskRequirement, TaskList), re-exported from darkf/src/core/index.ts
-- parseTaskList in darkf/src/core/tasks.ts: hand-written, zero-dependency, narrowing unknown JSON to TaskList | { error } (Decisions: Validation)
-- foldTaskList alongside foldJournal in darkf/src/kit/status.ts: a pure function returning done/total counts, the current in-progress item, and stall state
-- the plugin (darkf-opencode-plugin/src/): TaskListView in digest.ts; store.ts reads .darkf/run/<runId>/tasks.json on the existing poll with an fs.watch next to the journal watcher; overlay.tsx grows a tab bar — tab "workflow" (today's PlanGraph, unchanged, the default) and tab "tasks nn/mm" (strict done/total in the title, hidden while tasks.json is absent, "?" counter plus the inline parse error when invalid); task rows per the plugin Decisions (glyph + id + title, "!" before the title for must priority, the active row's dim "↳ REQ-…" satisfies line, ○ pending / ● in-progress accent bold / ✓ done dim / ✗ failed error); keys "1"/"2" and clicking a tab title switch tabs; the supervisor pane stays below, shared by both tabs
-- tests: parseTaskList narrowing cases (valid list, missing/wrong-typed fields, bad status and priority unions, tasks not an array), foldTaskList counts/current/stall, and the TaskListView digest in darkf-opencode-plugin/src/digest.test.ts
+- darkf/src/core/types.ts: CrashReason gains { kind: "usage-limit"; detail: string }; BaseLeafDef gains usageLimitRetryMs (default 30 * 60 * 1000) and usageLimitMaxWaitMs (default 24 * 60 * 60 * 1000) beside retries/timeoutMs; the running NodeStatus gains limitBackoff: { probe: number; nextAttemptAt: number; waitedMs: number }
+- darkf/src/engine/run.ts: in the AgentFailure catch, a usage-limit reason takes a new branch — it does not advance the attempt counter and does not consume def.retries; it accumulates waitedMs per node visit and, while waitedMs + retryMs <= maxWaitMs, sleeps retryMs while emitting running heartbeats carrying limitBackoff (probe index, nextAttemptAt, waitedMs), recomputes the attempt deadline from timeoutMs, and re-dispatches the same attempt; at the cap it takes the existing crashed() path with the last usage-limit reason. usage-limit stays out of NUDGEABLE_KINDS. The engine forwards previousFailure and agentSessionId to the next dispatch unchanged
+- darkf/src/kit/agents/opencode.ts: export function matchUsageLimit(stderr, stdout) — lowercase the non-JSON lines (skip lines that parse as JSON), match markers "usage limit", "rate limit", "limit exceeded", "429", return the first matched line. Call it ONLY in the existing exitCode !== 0 branch; on a match throw AgentFailure with crashReason { kind: "usage-limit", detail: matched line } and the evidence-gated agentSessionId (stepCount > 0, exactly as today); a no-match keeps the existing runner-error throw byte-for-byte. Beside the nudge path: when info.previousFailure?.kind === "usage-limit" AND info.agentSessionId is present, dispatch with -s <agentSessionId> and a short continuation prompt ("a provider usage limit interrupted your previous turn. Continue where you left off.") plus the handoff contract text, without replaying the full prompt; otherwise the fresh prompt path unchanged
+- darkf/src/kit/status.ts: limitWarning folded from the latest running status's limitBackoff (denominator ceil(maxWaitMs / retryMs)), printed by the status and monitor commands in darkf/src/cli/index.ts in the same one-line warn style as stallWarning/nudgeWarning: "warn: usage limit — probe 3/48, next attempt in 22m"
+- tests: matcher fixtures (the captured message "Usage limit reached for 5 hour." with a non-zero exit classifies usage-limit; a non-limit API error stays runner-error; a limit string inside an agent-authored JSON line does not match; an exit-0 + missing-handoff output containing a limit string stays handoff-missing), engine wait loop in darkf/src/engine/run.test.ts (retry fires after the interval with a shortened timer, def.retries not consumed, the cap crashes with probe count/total wait/detail, the deadline is recomputed after each wait), resume paths (with a session id the dispatch carries -s and the continuation prompt, without it the dispatch is fresh), and limitWarning rendering in darkf/src/kit/status.test.ts
 
-Follow the existing code style of darkf/src/kit/status.ts and darkf-opencode-plugin/src/. Do not commit. Do not touch files outside darkf/src/, darkf-opencode-plugin/src/, and docs/specs/${FEATURE}/.
+Follow the existing code style of darkf/src/engine/run.ts, darkf/src/kit/agents/opencode.ts, and darkf/src/kit/status.ts. Do not commit. Do not touch files outside darkf/src/ and docs/specs/${FEATURE}/.
 
 Finish with event "implemented". If the spec cannot be implemented as written, finish with event "blocked" and put the reason in the output. If a review demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { implemented: "Check", blocked: DONE, disputed: DONE },
@@ -88,7 +88,7 @@ Finish with event "implemented". If the spec cannot be implemented as written, f
           retries: 1,
           prompt: `You are repairing the ${FEATURE} implementation after a failed gate.
 
-The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/ and darkf-opencode-plugin/src/.
+The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md (component wiring in docs/specs/${FEATURE}/design.md) for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/.
 
 Finish with event "fixed". If the failure exposes a spec defect you cannot resolve in code, finish with event "blocked" and the reason. If the demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { fixed: "Check", blocked: DONE, disputed: DONE },
@@ -99,11 +99,13 @@ Finish with event "fixed". If the failure exposes a spec defect you cannot resol
           retries: 1,
           prompt: `You are an independent reviewer. Do not modify any files.
 
-Verify the working tree against docs/specs/${FEATURE}/spec.md:
+Verify the working tree against docs/specs/${FEATURE}/spec.md (component wiring and test plan in docs/specs/${FEATURE}/design.md):
 - inspect git status --porcelain in addition to git diff — agent-authored new files are invisible to git diff alone
-- check the types match the spec's Design sketch field for field, and that both Decisions sections are each reflected in code (parseTaskList zero-dep narrowing; tasks.json read from .darkf/run/<runId>/; satisfies + lowercase MoSCoW; row format, glyph mapping, strict done/total counter, hidden-when-absent tab, file-status active row)
-- check the test suites cover the spec: parseTaskList narrowing, foldTaskList, and the TaskListView digest
-- you may run "bun test darkf/src/core darkf/src/kit darkf-opencode-plugin/src" yourself
+- check the types match the spec field for field: the usage-limit CrashReason kind (detail field), the BaseLeafDef usageLimitRetryMs/usageLimitMaxWaitMs defaults (30 min / 24 h), and the running NodeStatus limitBackoff fields (probe, nextAttemptAt, waitedMs)
+- check the engine branch: a usage-limit reason does not advance the attempt counter, does not consume def.retries, never sits in NUDGEABLE_KINDS, heartbeats carry limitBackoff during the wait, the deadline is recomputed after each wait, and the cap crash carries probe count, total wait, and detail
+- check the runner: matchUsageLimit runs ONLY in the exitCode !== 0 branch, scans only non-JSON lines, uses the spec's marker set, gates the session id on stepCount > 0, and keeps every other failure path byte-for-byte; the continuation path requires BOTH previousFailure usage-limit AND a session id, dispatches -s with the short continuation prompt plus the handoff contract text, and does not replay the full prompt
+- check the tests cover the spec: matcher fixtures including the exit-0 exclusion, the engine wait loop (interval, no retry consumption, cap crash facts, deadline recompute), resume vs fresh dispatch, and limitWarning rendering
+- you may run "bun test darkf/src" and "bun run lint" yourself
 
 Approve only if the implementation fulfills the spec. Otherwise list every required change concretely in the output.
 
