@@ -128,6 +128,13 @@ narrow terminals.
 
 - **run-session-panels** — blocked by: none (picker-all-runs and
   durable-run-session-schema both shipped, see Decisions above).
+- **tiled-run-grid** — blocked by: none. New feature request (2026-11-08):
+  watch multiple runs at once in a tiled grid inside the overlay. First
+  grill pass locked the shape (grid in the dialog — the host contract has
+  no split primitive, only `app`/`app_bottom` slots plus dialogs); the
+  spec's open questions (placement vs tabs/picker, 2-up vs N-up, focus
+  model, compact behavior, which runs tile) remain. Draft spec:
+  `docs/specs/opencode-overlay-tiles/spec.md`.
 - *(`search-picker-empty` retired — split into the three above; see that
   ticket file for the pointer. Shared draft spec for all three:
   `docs/specs/opencode-search-candidates/spec.md`, organized by package.)*
