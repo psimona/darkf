@@ -34,7 +34,8 @@ because there's no session on the binding to return to.
 - No visible regression to what the overlay already shows (`PlanGraph`,
   `SupervisorPanel`, the unbound-candidate picker) or how it's reached
   (auto-open on new run, the toggle button, `/darkf` command, keybind).
-- Foundation for `docs/specs/opencode-overlay-sizing/spec.md` (compact vs.
+- Foundation for `docs/specs/_built/opencode-overlay-sizing/spec.md`
+  (compact vs.
   expanded) and `docs/specs/opencode-overlay-tabs/spec.md` (tabs) — both
   depend on the overlay being a dialog, not a route.
 

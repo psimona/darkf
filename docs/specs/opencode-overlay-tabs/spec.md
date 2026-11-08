@@ -16,7 +16,7 @@ all.
 ## Goals
 
 - Three tabs inside the compact dialog (per
-  `docs/specs/opencode-overlay-sizing/spec.md`): **current run** (existing
+  `docs/specs/_built/opencode-overlay-sizing/spec.md`): **current run** (existing
   `PlanGraph`/`SupervisorPanel`), **search** (the picker, fixed per
   `docs/specs/opencode-search-candidates/spec.md`), **journal** (new — see
   below).
@@ -26,9 +26,10 @@ all.
 
 ## Non-goals
 
-- Expanded-mode layout — per `opencode-overlay-sizing/spec.md`'s open
-  question, expanded mode may not use tabs at all; this spec is
-  compact-mode only.
+- Expanded-mode layout — resolved by
+  `docs/specs/_built/opencode-overlay-sizing/spec.md`: tabs are the
+  control mode in both sizes; expanded is the same tabbed UI in an
+  `"xlarge"` dialog. This spec covers both sizes with one code path.
 - The search picker's own data-source fix — that's
   `opencode-search-candidates/spec.md`; this spec just hosts it as a tab.
 

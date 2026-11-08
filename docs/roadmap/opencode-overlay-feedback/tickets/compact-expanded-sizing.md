@@ -21,4 +21,10 @@ session-binding-loss
 
 ## Status
 
-(unclaimed)
+done — built and typechecked clean (plugin-only: `overlay.tsx`). Decisions
+locked 2026-11-08 by grill walkthrough: auto-detect (`width < 100` →
+`"medium"`, else `"xlarge"`, unknown/0 compacts), freeze at open, size
+prop only, tabs in both sizes. The blocking fog item (does `CliRenderer`
+expose a queryable width) was resolved from the installed type surface
+before implementation: yes. Full writeup:
+`docs/specs/_built/opencode-overlay-sizing/spec.md`.

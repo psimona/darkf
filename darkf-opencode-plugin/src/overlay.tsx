@@ -22,6 +22,7 @@ const TASK_GLYPHS: Record<TaskStatus, string> = {
 
 interface OverlayState {
   runId?: string;
+  size: "medium" | "xlarge";
 }
 
 // Module-level, not component-local — `openOverlay`/`closeOverlay` are called
@@ -31,12 +32,29 @@ interface OverlayState {
 // not persisted" shape `locate.ts`'s `bindings` map already uses.
 const [overlay, setOverlay] = createSignal<OverlayState | null>(null);
 
+/** Set once by `registerOverlay` so `openOverlay` (called from outside any
+ *  render tree — see the signal's comment) can read the renderer's width
+ *  at open time. Sizing freezes there: a mid-session terminal resize
+ *  doesn't reflow an open overlay (see spec:
+ *  docs/specs/_built/opencode-overlay-sizing/spec.md). */
+let registeredApi: TuiPluginApi | undefined;
+
+/** Compact under ~100 cols (narrow terminal / mobile), expanded otherwise.
+ *  Unknown or 0 width also compacts — the content is fluid, so medium never
+ *  breaks, while xlarge can overflow a host that never reported a width. */
+function overlaySize(): "medium" | "xlarge" {
+  const width = registeredApi?.renderer.width ?? 0;
+  return width >= 100 ? "xlarge" : "medium";
+}
+
 /** Opens the overlay bound to `runId`, or with no run resolved (the
  *  `Picker` renders) when omitted. Never touches `api.route.current` — see
- *  spec: docs/specs/opencode-overlay-dialog/spec.md. Safe to call whether
- *  or not the overlay is already open; it just replaces the shown run. */
+ *  spec: docs/specs/_built/opencode-overlay-dialog/spec.md. Safe to call
+ *  whether or not the overlay is already open; it just replaces the shown
+ *  run (and re-reads the terminal width — replacing the shown run is a new
+ *  open). */
 export function openOverlay(runId?: string): void {
-  setOverlay({ runId });
+  setOverlay({ runId, size: overlaySize() });
 }
 
 export function closeOverlay(): void {
@@ -435,13 +453,14 @@ function OverlayContent(props: {
  *  `onCleanup`s fire) purely from `overlay()` going truthy/falsy — no
  *  route involved at any point. */
 export function registerOverlay(api: TuiPluginApi, store: LiveStore): void {
+  registeredApi = api;
   api.slots.register({
     order: 50,
     slots: {
       app: (_ctx: Readonly<TuiSlotContext>) => (
         <Show when={overlay()}>
           {(state: () => OverlayState) => (
-            <api.ui.Dialog size="xlarge" onClose={closeOverlay}>
+            <api.ui.Dialog size={state().size} onClose={closeOverlay}>
               <OverlayContent api={api} store={store} runId={state().runId} />
             </api.ui.Dialog>
           )}

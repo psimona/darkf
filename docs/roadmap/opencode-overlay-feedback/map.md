@@ -84,6 +84,21 @@ narrow terminals.
   **verify-opencode-session-env**, unblocking **run-session-panels**
   below for the Claude Code harness now, opencode once that lands.
   (↪ ticket: tickets/durable-run-session-schema.md)
+- **compact-expanded-sizing** — built and typechecked clean
+  (plugin-only: `overlay.tsx`, no other module touched). Auto-detect, no
+  user control: `renderer.width` read once per `openOverlay`,
+  `width < 100` → `"medium"` (compact), `width >= 100` → `"xlarge"`
+  (expanded, the previous always-on value), `"large"` unused, unknown/0
+  width compacts (fluid content never breaks at medium; xlarge can
+  overflow). Freeze at open — no `RESIZE` reflow. Size prop only, no
+  second layout; tabs are the control mode in both sizes (supersedes the
+  earlier lean that expanded mode might drop tabs). The spec's one open
+  question (does `CliRenderer` expose a queryable terminal width) was
+  resolved from the installed type surface before implementation: yes —
+  public `width`/`height` plus a `RESIZE` event, exposed as
+  `TuiPluginApi.renderer`; the knob is `TuiDialogProps.size`, not
+  imperative `setSize`.
+  (↪ docs/specs/_built/opencode-overlay-sizing/spec.md)
 
 ## Open tickets
 
@@ -107,13 +122,11 @@ narrow terminals.
   **darkf will only claim opencode-session correlation support from
   whichever version this check confirms upward — not from "the PR
   merged" alone.**
-- **compact-expanded-sizing** — blocked by: session-binding-loss (the sizing
-  story is `TuiDialogStack.setSize`, which only exists once the overlay is a
-  dialog). Draft spec: `docs/specs/opencode-overlay-sizing/spec.md`.
-- **tabbed-overlay-views** — blocked by: session-binding-loss,
-  compact-expanded-sizing (tabs live inside the sized dialog; the "search"
-  tab reuses search-picker-empty's fixed data source). Draft spec:
-  `docs/specs/opencode-overlay-tabs/spec.md`.
+- **tabbed-overlay-views** — blocked by: none (session-binding-loss and
+  compact-expanded-sizing both shipped, see Decisions above). Draft spec:
+  `docs/specs/opencode-overlay-tabs/spec.md` — its sizing reference needs
+  updating there: expanded mode is the same tabbed UI in a bigger dialog,
+  not "everything at once without tabs".
 
 ## Not yet specified (fog)
 
@@ -125,10 +138,11 @@ narrow terminals.
   other sessions" tab need its own nested dialog, or does it render inline
   inside the one already-open plan dialog); doesn't block
   **session-binding-loss**, which only ever opens one dialog at a time.
-- Whether `TuiPluginApi.renderer`/`CliRenderer` exposes a terminal width
-  queryable at render time, which decides whether "compact vs. expanded" in
-  **compact-expanded-sizing** can be auto-detected or must be a manual
-  toggle. Not checked yet.
+- ~~Whether `TuiPluginApi.renderer`/`CliRenderer` exposes a terminal width
+  queryable at render time~~ — resolved 2026-11-08 from the installed
+  type surface: yes (`CliRenderer.width`/`height` public, plus a `RESIZE`
+  event; `TuiPluginApi.renderer` is typed `CliRenderer`). This is what
+  let **compact-expanded-sizing** ship auto-detect.
 
 ## Out of scope
 
