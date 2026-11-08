@@ -112,7 +112,13 @@ narrow terminals.
   view and the picker re-rendered — views now cover every entry, with an
   mtime-keyed memo keeping past runs at one `stat` per tick instead of a
   re-parse. This also fixes the adjacent defect where a run's graph
-  vanished from the overlay the moment the run finished. The by-hand
+  vanished from the overlay the moment the run finished. One more
+  consumer of the same changed semantics found after ship (user report):
+  the band's `summaryLine` counted `views()` as "runs active" — now
+  derives active runs from `pickerCandidates`' classification and shows
+  the single live run's real status again (unit-tested in
+  `band.test.ts` via the extracted `summary.ts`).
+  The by-hand
   live-TUI check (real history on disk, picker opened from an unbound
   session) still pends a session, same as the overlay-dialog spec's
   live checks.
