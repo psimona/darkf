@@ -1,8 +1,8 @@
-import { type FSWatcher, readFileSync, watch } from "node:fs";
+import { type FSWatcher, readFileSync, statSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
-import { journalPathFor, type RegistryEntry as RunEntry, readJournalText } from "@psimona/darkf";
+import { journalPathFor, type RegistryEntry as RunEntry } from "@psimona/darkf";
 import type { WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { createSignal } from "solid-js";
 import { buildPlanView, buildTaskListView, type PlanView, type TaskListView } from "./digest.ts";
@@ -10,10 +10,10 @@ import {
   bindingFor,
   ensureBinding,
   forgetUnless,
-  liveRunEntries,
+  type PickerEntry,
   type RunBinding,
+  runEntryStates,
   taskListPathFor,
-  unboundOf,
 } from "./locate.ts";
 import { supervisorViewFor } from "./supervisor.ts";
 
@@ -60,7 +60,11 @@ function currentSessionID(api: TuiPluginApi): string | undefined {
 export interface LiveStore {
   views: () => ReadonlyMap<string, PlanView>;
   taskViews: () => ReadonlyMap<string, TaskListView>;
-  unboundCandidates: () => RunEntry[];
+  /** Every run this project's registry has ever recorded, active-first
+   *  then most-recent-first — the picker's full data source, not just
+   *  live-and-unbound ones (see docs/specs/opencode-search-candidates/
+   *  spec.md). */
+  pickerCandidates: () => PickerEntry[];
   bindingFor: (runId: string) => RunBinding | undefined;
 }
 
@@ -78,9 +82,22 @@ export function startStore(
 ): LiveStore {
   const [views, setViews] = createSignal<ReadonlyMap<string, PlanView>>(new Map());
   const [taskViews, setTaskViews] = createSignal<ReadonlyMap<string, TaskListView>>(new Map());
-  const [unbound, setUnbound] = createSignal<RunEntry[]>([]);
+  const [picker, setPicker] = createSignal<PickerEntry[]>([]);
   const watchers = new Map<string, FSWatcher>();
   const taskWatchers = new Map<string, FSWatcher>();
+  // Past runs' journals never change, and there can be far more of them
+  // than live runs — rebuilt only when the file's mtime moves, so a tick
+  // costs a `stat` per historical run instead of a re-parse.
+  const viewCache = new Map<string, { mtimeMs: number; view: PlanView }>();
+  const taskCache = new Map<string, { mtimeMs: number; view: TaskListView }>();
+
+  function mtimeOf(path: string): number {
+    try {
+      return statSync(path).mtimeMs;
+    } catch {
+      return -1;
+    }
+  }
 
   function ensureWatcher(entry: RunEntry): void {
     if (watchers.has(entry.runId)) return;
@@ -136,7 +153,8 @@ export function startStore(
   }
 
   async function refresh(): Promise<void> {
-    const entries = liveRunEntries(directory());
+    const states = runEntryStates(directory());
+    const entries = states.filter((s) => s.active).map((s) => s.entry);
     const liveIds = new Set(entries.map((e) => e.runId));
     forgetUnless(liveIds);
 
@@ -148,19 +166,44 @@ export function startStore(
 
     const next = new Map<string, PlanView>();
     const nextTasks = new Map<string, TaskListView>();
-    for (const entry of entries) {
-      const workflow = await loadWorkflowCached(entry.workflowDir);
-      const text = readJournalText(journalPathFor(entry));
-      const supervisor = supervisorViewFor(api, bindingFor(entry.runId)?.supervisorSessionID);
-      next.set(entry.runId, buildPlanView(entry.runId, workflow, text, supervisor));
-      nextTasks.set(entry.runId, buildTaskListView(entry.runId, readTaskListText(entry)));
-      ensureWatcher(entry);
-      ensureTaskWatcher(entry);
+    for (const state of states) {
+      const entry = state.entry;
+      // Live runs rebuild every tick (their journal is moving, and a
+      // binding/supervisor may have appeared mid-run); past runs take the
+      // memo unless the journal mtime moved, which for a finished run it
+      // never does.
+      const journalMtime = mtimeOf(journalPathFor(entry));
+      const cachedView = viewCache.get(entry.runId);
+      const view =
+        state.active || cachedView === undefined || cachedView.mtimeMs !== journalMtime
+          ? buildPlanView(
+              entry.runId,
+              await loadWorkflowCached(entry.workflowDir),
+              state.journalText,
+              supervisorViewFor(api, bindingFor(entry.runId)?.supervisorSessionID),
+            )
+          : cachedView.view;
+      viewCache.set(entry.runId, { mtimeMs: journalMtime, view });
+      next.set(entry.runId, view);
+
+      const tasksMtime = mtimeOf(taskListPathFor(entry));
+      const cachedTasks = taskCache.get(entry.runId);
+      const taskView =
+        state.active || cachedTasks === undefined || cachedTasks.mtimeMs !== tasksMtime
+          ? buildTaskListView(entry.runId, readTaskListText(entry))
+          : cachedTasks.view;
+      taskCache.set(entry.runId, { mtimeMs: tasksMtime, view: taskView });
+      nextTasks.set(entry.runId, taskView);
+
+      if (state.active) {
+        ensureWatcher(entry);
+        ensureTaskWatcher(entry);
+      }
     }
 
     setViews(next);
     setTaskViews(nextTasks);
-    setUnbound(unboundOf(entries));
+    setPicker(states.map(({ entry, active }) => ({ entry, active })));
     dropStaleWatchers(liveIds);
   }
 
@@ -174,5 +217,5 @@ export function startStore(
     taskWatchers.clear();
   });
 
-  return { views, taskViews, unboundCandidates: unbound, bindingFor };
+  return { views, taskViews, pickerCandidates: picker, bindingFor };
 }

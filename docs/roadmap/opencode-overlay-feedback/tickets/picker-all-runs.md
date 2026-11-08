@@ -23,7 +23,20 @@ in this roadmap effort.
 
 ## Status
 
-(unclaimed)
+done — built, typechecked, and tested clean (plugin-only, per scope).
+Implementation landed as `runEntryStates` in `locate.ts` (one raw-read
+pass over the full registry, each entry classified — the old
+`liveRunEntries`/`unboundOf` filter chain, which excluded history by
+construction, deleted). Picker gains the `●`/`○` markers, the
+`(isActive, startedAt) desc` sort, and 50/page paging with the
+`__next_page__` sentinel, all per the design below; sort and paging are
+pure functions unit-tested in `locate.test.ts`. One decision found while
+implementing, not predicted here: `store.views` also grew to cover every
+entry (with an mtime-keyed memo so past runs cost a `stat` per tick, not
+a re-parse) — otherwise selecting a past run resolved to no view and the
+picker just re-rendered, leaving the reported symptom half-fixed. The
+verification strategy's by-hand check (live TUI, real history on disk)
+still pends a session, same as the overlay-dialog spec's live checks.
 
 ## Design (resolved — see `docs/specs/opencode-search-candidates/spec.md`
 ## for full detail; summarized here for this ticket's own scope)

@@ -5,6 +5,13 @@ ticket `tickets/search-picker-empty.md` (grilled well past its original
 scope — see note at the end of this spec on splitting, deliberately
 deferred until this draft is complete).
 
+Shipped so far: slice 2, **picker-all-runs** (2026-11-08 — the picker's
+full-history data source, `(isActive, startedAt) desc` sort, `●`/`○`
+markers, 50/page paging; one addition beyond this draft: `store.views`
+covers past runs too, mtime-memoized, so a picked run actually opens).
+Remaining: slice 1 (**durable-run-session-schema** — shipped, see
+`docs/roadmap/.../map.md` Decisions) and slice 3 (**run-session-panels**).
+
 ## Problem
 
 Started as: the overlay's picker only ever lists `store.unboundCandidates()`

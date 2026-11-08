@@ -99,15 +99,29 @@ narrow terminals.
   `TuiPluginApi.renderer`; the knob is `TuiDialogProps.size`, not
   imperative `setSize`.
   (↪ docs/specs/_built/opencode-overlay-sizing/spec.md)
+- **picker-all-runs** — built, typechecked, and tested clean (7 new
+  unit tests in `locate.test.ts`; plugin-only, per scope). The picker's
+  data source switched from `unboundOf(liveRunEntries(...))` — a chain
+  that excluded history by construction (live-only filter, then
+  never-bound filter) — to one full-registry pass (`runEntryStates`):
+  every entry ever recorded, classified, sorted active-first then
+  most-recent, `●`/`○` markers, 50/page paging with a `__next_page__`
+  sentinel. `liveRunEntries`/`unboundOf` deleted (picker was their only
+  consumer). Found while implementing, not predicted: `store.views` had
+  the same live-only root filter, so a picked past run resolved to no
+  view and the picker re-rendered — views now cover every entry, with an
+  mtime-keyed memo keeping past runs at one `stat` per tick instead of a
+  re-parse. This also fixes the adjacent defect where a run's graph
+  vanished from the overlay the moment the run finished. The by-hand
+  live-TUI check (real history on disk, picker opened from an unbound
+  session) still pends a session, same as the overlay-dialog spec's
+  live checks.
+  (↪ ticket: tickets/picker-all-runs.md)
 
 ## Open tickets
 
-- **picker-all-runs** — blocked by: none. The originally-reported bug
-  ("search always displays empty"), needs nothing from the schema ticket
-  — can ship first and alone.
-- **run-session-panels** — blocked by: picker-all-runs (now its only
-  remaining blocker — durable-run-session-schema shipped, see Decisions
-  above).
+- **run-session-panels** — blocked by: none (picker-all-runs and
+  durable-run-session-schema both shipped, see Decisions above).
 - *(`search-picker-empty` retired — split into the three above; see that
   ticket file for the pointer. Shared draft spec for all three:
   `docs/specs/opencode-search-candidates/spec.md`, organized by package.)*

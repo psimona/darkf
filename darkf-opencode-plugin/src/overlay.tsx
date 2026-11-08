@@ -3,9 +3,9 @@ import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui";
 import { createTextAttributes } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { EXIT, type Task, type TaskStatus } from "@psimona/darkf/src/core/index.ts";
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { PlanNode, PlanView, TaskListView } from "./digest.ts";
-import type { RunBinding } from "./locate.ts";
+import { pickerOrder, pickerPage, type PickerEntry, type RunBinding } from "./locate.ts";
 import type { LiveStore } from "./store.ts";
 import { ToggleTab } from "./toggle-tab.tsx";
 
@@ -291,20 +291,32 @@ function TabBar(props: {
   );
 }
 
-function Picker(props: {
-  api: TuiPluginApi;
-  candidates: Array<{ runId: string; rootDir: string }>;
-}): JSX.Element {
+const NEXT_PAGE = "__next_page__";
+
+function Picker(props: { api: TuiPluginApi; candidates: PickerEntry[] }): JSX.Element {
   const { DialogSelect } = props.api.ui;
+  // Component-local and scoped to this mount: the Picker renders only while
+  // no run view is showing, so reopening history starts back at page 1 —
+  // same scoping `manualOpen` uses for composite expand state.
+  const [page, setPage] = createSignal(0);
+  const paged = createMemo(() => pickerPage(pickerOrder(props.candidates), page()));
   return (
     <DialogSelect
-      title="Multiple darkf runs — pick one"
-      options={props.candidates.map((c) => ({
-        title: c.runId,
-        value: c.runId,
-        description: c.rootDir,
-      }))}
-      onSelect={(option) => openOverlay(option.value as string)}
+      title="darkf runs — pick one"
+      options={[
+        ...paged().rows.map((c) => ({
+          title: `${c.active ? "●" : "○"} ${c.entry.runId}`,
+          value: c.entry.runId,
+          description: c.entry.rootDir,
+        })),
+        ...(paged().hasMore
+          ? [{ title: "→ more…", value: NEXT_PAGE, description: "next 50 runs" }]
+          : []),
+      ]}
+      onSelect={(option) => {
+        if (option.value === NEXT_PAGE) setPage((p) => p + 1);
+        else openOverlay(option.value as string);
+      }}
     />
   );
 }
@@ -358,10 +370,10 @@ function OverlayContent(props: {
 
   const view = () => (props.runId ? store.views().get(props.runId) : undefined);
   const taskView = () => (props.runId ? store.taskViews().get(props.runId) : undefined);
-  const candidates = () =>
-    props.runId
-      ? []
-      : store.unboundCandidates().map((e) => ({ runId: e.runId, rootDir: e.rootDir }));
+  // Full history, not just live runs — a finished run still opens its
+  // graph from here (store.views covers every registry entry; see
+  // docs/specs/opencode-search-candidates/spec.md).
+  const candidates = () => store.pickerCandidates();
 
   // Tab "workflow" (the workflow graph) is the default, so auto-open behavior
   // is unchanged; "tasks" only exists while tasks.json does (see TabBar).

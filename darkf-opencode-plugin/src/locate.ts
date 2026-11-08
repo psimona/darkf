@@ -25,16 +25,66 @@ export interface RunBinding {
 
 const bindings = new Map<string, RunBinding>();
 
-/** All registry entries this project root currently believes are live,
- *  cross-checked against the journal's own terminal marker the same
- *  defensive way `darkf-cli`'s own `resolveRun` does — a cached "running"
- *  status is never trusted alone (see darkf-cli/src/registry.ts). */
-export function liveRunEntries(directory: string): RunEntry[] {
+/** One registry entry plus the facts derived from it per poll tick: the
+ *  same defensive terminal classification `darkf-cli`'s `resolveRun`
+ *  applies (a cached "running" status is never trusted alone), and the
+ *  journal text that classification already had to read — reused for
+ *  view-building so each entry's journal is read once per tick, not
+ *  twice. */
+export interface RunEntryState {
+  entry: RunEntry;
+  /** `classifyTerminal(...) === "running"` — live, not merely cached-live. */
+  active: boolean;
+  journalText: string;
+}
+
+/** Every registry entry this project root has ever recorded — live and
+ *  past — each classified. This is the plugin's single raw-read pass: the
+ *  old `liveRunEntries` filtered the same `listEntries` output down to
+ *  running-only, which excluded history from everything downstream of it
+ *  (the picker's "search always displays empty"; see
+ *  docs/specs/opencode-search-candidates/spec.md). */
+export function runEntryStates(directory: string): RunEntryState[] {
   const root = projectRoot(directory);
-  return listEntries(root).filter((entry) => {
-    const text = readJournalText(journalPathFor(entry));
-    return classifyTerminal(text, isPidAlive(entry.pid)) === "running";
+  return listEntries(root).map((entry) => {
+    const journalText = readJournalText(journalPathFor(entry));
+    return {
+      entry,
+      active: classifyTerminal(journalText, isPidAlive(entry.pid)) === "running",
+      journalText,
+    };
   });
+}
+
+/** Display shape for the picker: what to show and how to mark it, with no
+ *  journal payload carried into render land. */
+export interface PickerEntry {
+  entry: RunEntry;
+  active: boolean;
+}
+
+export const PICKER_PAGE_SIZE = 50;
+
+/** Active runs first, then most-recent-first within each group — an active
+ *  run must never rank below a just-finished one just because its last
+ *  event is older (see docs/specs/opencode-search-candidates/spec.md).
+ *  Returns a new array; the input is untouched. */
+export function pickerOrder(entries: PickerEntry[]): PickerEntry[] {
+  return [...entries].sort((a, b) =>
+    a.active !== b.active ? (a.active ? -1 : 1) : b.entry.startedAt - a.entry.startedAt,
+  );
+}
+
+/** One page of an already-ordered list, plus whether a `→ more…` row
+ *  applies. Only bounds display — `listEntries` still returns everything,
+ *  so no historical data is lost, just how far back one page shows. */
+export function pickerPage(
+  ordered: PickerEntry[],
+  page: number,
+): { rows: PickerEntry[]; hasMore: boolean } {
+  const start = page * PICKER_PAGE_SIZE;
+  const rows = ordered.slice(start, start + PICKER_PAGE_SIZE);
+  return { rows, hasMore: ordered.length > start + rows.length };
 }
 
 export function bindingFor(runId: string): RunBinding | undefined {
@@ -74,8 +124,4 @@ export function forgetUnless(liveRunIds: ReadonlySet<string>): void {
   for (const runId of bindings.keys()) {
     if (!liveRunIds.has(runId)) bindings.delete(runId);
   }
-}
-
-export function unboundOf(entries: RunEntry[]): RunEntry[] {
-  return entries.filter((e) => !bindings.has(e.runId));
 }
