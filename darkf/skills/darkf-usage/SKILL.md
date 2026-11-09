@@ -69,6 +69,17 @@ Open dispatches write a heartbeat to the journal every 30 seconds. `darkf status
 
 `darkf report` shows per-dispatch spans, a visit histogram, and usage totals. Four or more visits to one state hints at a cycle.
 
+## After launch
+
+The run detaches. Watching is your job.
+
+- Tail with `darkf monitor --window 120`. One-shot with `darkf status`. A silent 10 minutes is normal. Trust the heartbeat.
+- Stay with the run until it reaches a terminal state.
+- A terminal state is not a shipped feature. `succeeded` means the workflow completed. Check what actually happened: `darkf report --run <id>`, and read the event of the last dispatch.
+- `blocked`, `disputed`, `branch_failed`, and `merge_failed` are human gates. The run exits 0 on all of them. Nothing ships until you resolve the blocker yourself.
+- A valid dispute usually means the blocker sits outside the scope of the feature. Fix it at the repo level, then start a new run. The resume pass verifies the tree and finishes the job.
+- `darkf report` needs `--run <id>` for a finished run. The `runId` is in the `start` output and in `.darkf/registry/`.
+
 ## Gotchas
 
 - A workflow may hardcode spec paths in its prompts. Read the workflow first. Check that those paths still exist in the target repo.
