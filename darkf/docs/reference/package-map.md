@@ -24,8 +24,9 @@ darkf ships two packages:
     handoff contract, and the run registry/status helpers behind
     [CLI commands](../cli-commands/). Depends on `core/` and `engine/`.
   - **`cli/`** — the `darkf` binary itself. Depends on all three.
-- **`darkf-opencode-plugin`** — an OpenCode TUI integration (a live pane
-  showing run status inside the OpenCode editor). Its own package,
+- **`darkf-opencode-plugin`** — an experimental OpenCode TUI integration
+  (a live pane showing run status inside the OpenCode editor). No public
+  release yet. Its own package,
   because its peer dependencies (`@opencode-ai/plugin`, `@opentui/*`,
   `solid-js`) are real and optional — no other consumer needs them.
 

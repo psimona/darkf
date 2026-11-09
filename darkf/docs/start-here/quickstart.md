@@ -225,9 +225,10 @@ exercise this same routing logic without spending anything.
 
 ## See it in an editor
 
-darkf also ships an OpenCode plugin — a live pane showing a run's status,
-journal, and dwell warnings inside the editor while a workflow executes,
-instead of needing a second terminal for `darkf monitor`.
+darkf also ships an experimental OpenCode plugin — a live pane showing a
+run's status, journal, and dwell warnings inside the editor while a
+workflow executes, instead of needing a second terminal for `darkf
+monitor`.
 
 <div style="border: 2px dashed var(--sl-color-gray-4); border-radius: 0.5rem; padding: 3rem 1.5rem; text-align: center; color: var(--sl-color-gray-3); margin: 1.5rem 0;">
   Screenshot coming soon — OpenCode plugin status pane

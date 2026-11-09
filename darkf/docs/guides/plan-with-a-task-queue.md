@@ -70,6 +70,13 @@ and they agree on one convention: `"in-progress"` means "the item `Next`
 handed out, that `Record` hasn't closed out yet" — so a crash between the
 two is visible as a stuck `in-progress` row, not a silently lost item.
 
+This project-level `tasks.json` is the workflow's own durable, committed
+queue. It is not the file the OpenCode plugin's tasks tab renders. That tab
+reads `.darkf/run/<runId>/tasks.json`, colocated with the run's journal.
+If you want the tab, have `Record` write a copy there too — `info.runId`
+carries the run id. The plugin is experimental: bundled in this repo, no
+public release.
+
 ```ts
 // scripts/next.ts
 import { readFileSync, writeFileSync } from "node:fs";
@@ -381,8 +388,9 @@ and check on it between other turns. darkf already distinguishes that
 case: `darkf start`/`run` check `process.env` for a short table of
 "invoked from inside harness X" signals (`SUPERVISOR_ENV_SIGNALS` in
 @psimona/darkf/src/kit/registry.ts` — today just `CLAUDE_CODE_SESSION_ID`) and, if
-one matches, record which session is supervising the run. The OpenCode
-plugin reads that back to show which session owns a run in its sidebar.
+one matches, record which session is supervising the run. The experimental
+OpenCode plugin (bundled in this repo, no public release) reads that back to
+show which session owns a run in its sidebar.
 Nothing about the exit-code loop above changes because of it — the
 difference is purely who's watching.
 
