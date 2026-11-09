@@ -15,7 +15,7 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 // workspace symlink — doctor's selfRoot guard fails inside the checkout):
 //
 //   bun run install:global   # once, to refresh the global binary
-//   darkf doctor darkf/workflows/dev-loop
+//   darkf validate darkf/workflows/dev-loop
 //   darkf start darkf/workflows/dev-loop "message" --allow-dirty-workflow
 //
 // Editing the FEATURE / RUN_DATE constants at the top of the begin/finish

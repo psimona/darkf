@@ -36,7 +36,7 @@ in memory.
 ```ts
 // workflow.ts
 import { EXIT, type WorkflowDef } from "@psimona/darkf/src/core/index.ts";
-import { claudeCodeRunner } from "../../src/agents/claude-code.ts";
+import { claudeCodeRunner } from "../../src/kit/agents/claude-code.ts";
 
 export const agentRunner = claudeCodeRunner;
 

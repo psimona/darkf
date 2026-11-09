@@ -9,7 +9,7 @@ came from a failure or near-failure in that run.
 Install options:
 
 - **Dev machine (tracks the checkout — recommended while darkf is moving):**
-  `cd darkf/darkf-cli && bun link` → a bare `darkf` on PATH that always runs
+  `cd darkf && bun link` → a bare `darkf` on PATH that always runs
   the working clone.
 - **Other machines (git head, no version):** `bun add -g git+<repo-url>` or
   `npm i -g git+<repo-url>` — the monorepo root exposes the `darkf` bin.
@@ -28,11 +28,11 @@ darkf start my-workflow "initial message"
 
 1. a path (contains `/`, or an existing dir relative to cwd — back-compat),
 2. `<cwd>/darkf/<ref>` — project workspace,
-3. `<darkf-cli>/workflows/<ref>` — shipped with darkf.
+3. `<darkf>/workflows/<ref>` — shipped with darkf.
 
 A candidate counts only if it contains `workflow.ts`. `darkf workflows` lists
 what is visible. Ship a reusable workflow with darkf by adding it to
-`darkf-cli/workflows/`; keep project-specific ones in the target repo's
+`darkf/workflows/`; keep project-specific ones in the target repo's
 `darkf/`.
 
 **`darkf/` vs `.darkf/` — two directories, two different lifetimes.**
@@ -51,13 +51,13 @@ target repo instead of resolving paths themselves.
 
 ## Use the built-in runners
 
-`src/agents/claude-code.ts` and `src/agents/opencode.ts` implement the
+`src/kit/agents/claude-code.ts` and `src/kit/agents/opencode.ts` implement the
 handoff-file contract (the agent writes its result JSON to
 `.darkf/run/<runId>/handoff/<step>-<nodeId>.json`), session resume, per-node
 `agent: { model, permissionMode }` config, and `def.timeoutMs`. Wire one in:
 
 ```ts
-import { claudeCodeRunner } from "../../src/agents/claude-code.ts";
+import { claudeCodeRunner } from "../../src/kit/agents/claude-code.ts";
 export const agentRunner: AgentRunner = claudeCodeRunner;
 ```
 
