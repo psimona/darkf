@@ -28,7 +28,7 @@ darkf runs a TypeScript workflow graph. It dispatches AI agents (Claude Code or 
 
 - `<ref>` resolves in order: a path, then `<cwd>/darkf/<ref>` (project workspace), then workflows shipped with darkf.
 - There is no `--help` flag. Bare `darkf` is an error.
-- There is no `resume` command. Resume happens at the git level: a re-run reuses the branch and committed state the last run left. Check the journal and `git log` first. Never re-implement finished work by hand.
+- There is no `resume` command. Resume semantics belong to each workflow. Check the journal and `git log` first. Never re-implement finished work by hand.
 - `start` prints `{"runId":...,"pid":...}` and returns. The message is positional argument 2.
 - `start` and `run` refuse to start when `darkf/` has uncommitted changes. Commit or stash first, or pass `--allow-dirty-workflow`.
 
@@ -75,9 +75,8 @@ The run detaches. Watching is your job.
 
 - Tail with `darkf monitor --window 120`. One-shot with `darkf status`. A silent 10 minutes is normal. Trust the heartbeat.
 - Stay with the run until it reaches a terminal state.
-- A terminal state is not a shipped feature. `succeeded` means the workflow completed. Check what actually happened: `darkf report --run <id>`, and read the event of the last dispatch.
-- `blocked`, `disputed`, `branch_failed`, and `merge_failed` are human gates. The run exits 0 on all of them. Nothing ships until you resolve the blocker yourself.
-- A valid dispute usually means the blocker sits outside the scope of the feature. Fix it at the repo level, then start a new run. The resume pass verifies the tree and finishes the job.
+- A terminal state is not a shipped feature. `succeeded` means the graph completed. What happened lives in the event of the last dispatch: `darkf report --run <id>`.
+- Any event routed to `DONE` ends the run with exit 0. Whether an event means shipped, stopped, or a human gate is the decision of the workflow, recorded in its `on` routes.
 - `darkf report` needs `--run <id>` for a finished run. The `runId` is in the `start` output and in `.darkf/registry/`.
 
 ## Gotchas
