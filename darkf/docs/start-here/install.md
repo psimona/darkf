@@ -16,6 +16,23 @@ bun install -g @psimona/darkf
 darkf --help
 ```
 
+## Skills
+
+The package bundles two agent skills — `darkf-usage` and
+`darkf-writing-workflows` — for writing and running workflows. Install
+them into your agent host:
+
+```sh
+darkf setup
+```
+
+Setup copies both skills into every detected host's skills dir (claude,
+opencode, codex, gemini, cursor — a host is detected by its skills dir
+existing or its binary being on `PATH`). The installed copies always
+mirror what the package ships: the next setup or upgrade replaces local
+edits to a `darkf-*` skill. `darkf doctor` reports the state without
+writing anything.
+
 ## Add to a Bun project
 
 ```sh

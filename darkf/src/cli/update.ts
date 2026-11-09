@@ -4,6 +4,7 @@
 // manager. No module-level mutable state.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { type SkillsDeps, syncAll } from "./setup.ts";
 
 const PACKAGE_SPEC = "@psimona/darkf";
 const REGISTRY_URL = "https://registry.npmjs.org/-/package/@psimona%2Fdarkf/dist-tags";
@@ -188,4 +189,23 @@ export async function upgradeCmd(deps: UpdateDeps): Promise<number> {
     writeState(deps.stateFile, { lastCheck: new Date(deps.now()).toISOString() });
   }
   return code;
+}
+
+/**
+ * `darkf upgrade` end-to-end (skill-setup spec): install the new package
+ * version, then sync the skills it now ships — after the install, the
+ * running process resolves the new bundled copies on disk, so skills can
+ * never be stale relative to the engine they teach. Same code path as
+ * `darkf setup`. Best-effort: a sync failure is reported and exits non-zero,
+ * but never masks the upgrade's own exit code.
+ */
+export async function upgradeWithSkills(
+  update: UpdateDeps,
+  skills: SkillsDeps,
+  log: (line: string) => void = console.log,
+): Promise<number> {
+  const code = await upgradeCmd(update);
+  if (code !== 0) return code;
+  log("skills:");
+  return syncAll({ ...skills, log });
 }

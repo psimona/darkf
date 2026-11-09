@@ -64,12 +64,13 @@ succeeded or crashed.
 ### Before any of this
 
 ```sh
-bunx darkf doctor my-workflow
+bunx darkf validate my-workflow
 ```
 
-Checks that the workflow resolves, that `workflow.ts` loads and exports
-`workflow` (and `agentRunner`, if any state needs one), that the `claude`
-and `opencode` binaries are on `PATH`, and that you're not accidentally
-running from inside the darkf checkout itself (a workflow's agent runner
-uses the invocation `cwd` as its working directory — a common mistake
-when first wiring a workflow against another repo).
+Checks that the workflow resolves and that `workflow.ts` loads and exports
+`workflow` (and `agentRunner`, if any state needs one). For the machine
+side, run `bunx darkf doctor`: the `claude` and `opencode` binaries on
+`PATH`, and that you're not accidentally running from inside the darkf
+checkout itself (a workflow's agent runner uses the invocation `cwd` as
+its working directory — a common mistake when first wiring a workflow
+against another repo).

@@ -5,7 +5,7 @@ import type { JSX } from "@opentui/solid/jsx-runtime";
 import { EXIT, type Task, type TaskStatus } from "@psimona/darkf/src/core/index.ts";
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { PlanNode, PlanView, TaskListView } from "./digest.ts";
-import { pickerOrder, pickerPage, type PickerEntry, type RunBinding } from "./locate.ts";
+import { type PickerEntry, pickerOrder, pickerPage, type RunBinding } from "./locate.ts";
 import type { LiveStore } from "./store.ts";
 import { ToggleTab } from "./toggle-tab.tsx";
 

@@ -40,6 +40,11 @@ binary is still `darkf`):
 bun install -g @psimona/darkf
 ```
 
+The package bundles two agent skills (`darkf-usage`,
+`darkf-writing-workflows`). Run `darkf setup` once to install them into
+every detected host (Claude Code, OpenCode, codex, gemini, cursor);
+`darkf upgrade` re-syncs them after each update.
+
 Full install options — including the sibling-checkout dev setup — in the
 [Install guide](https://psimona.github.io/darkf/start-here/install/).
 

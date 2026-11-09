@@ -5,7 +5,7 @@ import type { DispatchInfo } from "@psimona/darkf/src/core/index.ts";
 // rides along on the branch — Finish commits it there before the squash.
 // The slug is a workflow-file constant for the pilot; editing this file per
 // feature is the contract until engine-side input plumbing exists.
-const FEATURE = "usage-limit-backoff";
+const FEATURE = "skill-setup";
 
 function sh(...args: string[]): [string, number] {
   const proc = Bun.spawnSync(args, { stdout: "pipe", stderr: "pipe" });

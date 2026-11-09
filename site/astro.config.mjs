@@ -9,8 +9,20 @@ import rehypeMermaid from 'rehype-mermaid';
 // docs/specs/docs-site/spec.md's open decisions.
 const base = '/darkf';
 
+// The docs content lives in the package (darkf/docs/) and is loaded from
+// there (src/content.config.ts). MDX pages outside the site tree — index.mdx
+// imports Starlight components — cannot resolve `@astrojs/starlight/*` by
+// walking up from their own directory. dedupe pins those imports to the
+// site's copy of the package.
+const starlightDedupe = ['@astrojs/starlight'];
+
 export default defineConfig({
 	base,
+	vite: {
+		resolve: {
+			dedupe: starlightDedupe,
+		},
+	},
 	server: {
 		host: '0.0.0.0',
 	},

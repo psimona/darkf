@@ -66,15 +66,37 @@ wrote a usage sidecar. Works on any resolvable run, finished or not — but,
 like `status`, needs `--run <runId>` once that run is no longer cached as
 `running`.
 
-### `darkf doctor <workflow-ref>`
+### `darkf doctor`
 
-Pre-flight checks: the workflow resolves, `workflow.ts` loads, it exports
-`workflow` and (if needed) `agentRunner`, the `claude`/`opencode` binaries
+Environment checks, no target argument: the `claude`/`opencode` binaries
 are on `PATH`, the current working directory isn't inside the darkf
 checkout itself, and it's inside a git repo (every run's artifacts live
 under `.darkf/` in whatever directory you invoke from — this catches
-running from somewhere that isn't actually a project). Exits `0` if every
+running from somewhere that isn't actually a project). Also reports the
+state of the bundled `darkf-*` skills for every known harness (claude,
+opencode, codex, gemini, cursor): `ok`, `missing`, or `differs` for a
+present harness, `harness not present` for an absent one. Writes
+nothing — fixing skill drift is always `darkf setup`. Exits `0` if every
 check passes, `1` otherwise.
+
+### `darkf validate <ref>`
+
+Workflow checks, no environment: the workflow resolves, `workflow.ts`
+loads, it exports `workflow` and (if needed) `agentRunner`, and the state
+graph structure validates. Exits `0` if every check passes, `1`
+otherwise.
+
+### `darkf setup`
+
+Installs the bundled `darkf-*` skills (`darkf-usage`,
+`darkf-writing-workflows`) into every detected skill host's skills dir
+(claude, opencode, codex, gemini, cursor — detected by its skills dir
+existing or its binary being on `PATH`, creating the dir when needed).
+Writes only inside the `darkf-*` namespace: a missing copy is installed,
+a stale one is replaced, so the installed dir always mirrors what the
+package ships — local edits to a `darkf-*` skill do not survive a setup.
+Foreign skill dirs are never touched. Re-running a converged setup is a
+no-op. Takes no flags. Exits `0` on success, `1` if a copy failed.
 
 ### `darkf workflows`
 

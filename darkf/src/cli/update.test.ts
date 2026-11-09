@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import type { SkillsDeps } from "./setup.ts";
 import {
   checkRegistry,
   isDue,
@@ -10,6 +11,7 @@ import {
   type UpdateDeps,
   updateGate,
   upgradeCmd,
+  upgradeWithSkills,
   writeState,
 } from "./update.ts";
 
@@ -483,4 +485,84 @@ test("real CLI with a fresh not-due record: the notice is the first stdout line,
   expect(firstLine).toBe(
     `darkf 99.0.0 available (installed ${installedVersion}) — run 'darkf upgrade'`,
   );
+});
+
+// --- upgrade + skills sync (skill-setup spec) ---
+
+const SKILL_BUNDLED = "bundled skill body\n";
+const SKILL_STALE = "a stale installed copy\n";
+
+/** Fixture skills bundle + a home with a stale claude copy installed. */
+function skillsFixture(): { skills: SkillsDeps; installed: string } {
+  const bundledDir = tempDir();
+  mkdirSync(join(bundledDir, "darkf-usage"), { recursive: true });
+  writeFileSync(join(bundledDir, "darkf-usage", "SKILL.md"), SKILL_BUNDLED);
+  const home = tempDir();
+  const installed = join(home, ".claude", "skills", "darkf-usage", "SKILL.md");
+  mkdirSync(dirname(installed), { recursive: true });
+  writeFileSync(installed, SKILL_STALE);
+  return {
+    installed,
+    skills: { home, bundledDir, existsBinary: () => false },
+  };
+}
+
+test("upgrade runs the sync after the install, under the skills: header", async () => {
+  const file = tempStateFile();
+  const { skills, installed } = skillsFixture();
+  const { spawnImpl } = spawnStub((cmd) => {
+    if (cmd[1] === "pm") return { exitCode: 0, stdout: "└── @psimona/darkf@0.3.0" };
+    if (cmd[1] === "install") return { exitCode: 0 };
+    return undefined;
+  });
+  const { fetchImpl } = fetchReturning('{"latest":"9.9.9"}');
+
+  const { result, out } = await captured(() =>
+    upgradeWithSkills(deps({ stateFile: file, spawnImpl, fetchImpl }), skills),
+  );
+
+  expect(result).toBe(0);
+  const skillsIdx = out.indexOf("skills:");
+  expect(skillsIdx).toBeGreaterThanOrEqual(0);
+  expect(out.slice(skillsIdx).some((l) => l.includes("updated (was stale)"))).toBe(true);
+  expect(readFileSync(installed, "utf8")).toBe(SKILL_BUNDLED); // stale copy replaced
+});
+
+test("a failed upgrade skips the sync — never a skills: block, stale copy untouched", async () => {
+  const { skills, installed } = skillsFixture();
+  const { spawnImpl } = spawnStub((cmd) => {
+    if (cmd[1] === "pm") return { exitCode: 0, stdout: "└── @psimona/darkf@0.3.0" };
+    if (cmd[1] === "install") return { exitCode: 7 };
+    return undefined;
+  });
+  const { fetchImpl } = fetchReturning('{"latest":"9.9.9"}');
+
+  const { result, out } = await captured(() =>
+    upgradeWithSkills(deps({ spawnImpl, fetchImpl }), skills),
+  );
+
+  expect(result).toBe(7); // the upgrade's own exit code, unmasked
+  expect(out).not.toContain("skills:");
+  expect(readFileSync(installed, "utf8")).toBe(SKILL_STALE);
+});
+
+test("a sync failure after a good upgrade is reported and exits non-zero", async () => {
+  const { skills } = skillsFixture();
+  // The claude skills "dir" is a file — the sync cannot write.
+  rmSync(join(skills.home, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(skills.home, ".claude", "skills"), "a file, not a dir");
+  const { spawnImpl } = spawnStub((cmd) => {
+    if (cmd[1] === "pm") return { exitCode: 0, stdout: "└── @psimona/darkf@0.3.0" };
+    if (cmd[1] === "install") return { exitCode: 0 };
+    return undefined;
+  });
+  const { fetchImpl } = fetchReturning('{"latest":"9.9.9"}');
+
+  const { result, out, err } = await captured(() =>
+    upgradeWithSkills(deps({ spawnImpl, fetchImpl }), skills),
+  );
+
+  expect(result).toBe(1); // best-effort: reported, non-zero, upgrade unmasked
+  expect(out).toContain("skills:");
+  expect(err.join("\n")).not.toContain("skills"); // the failure is in the sync lines, not stderr noise
 });

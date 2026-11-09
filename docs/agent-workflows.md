@@ -107,10 +107,13 @@ notes) are invisible to `git diff`. Review prompts must say:
 
 ## Preflight, report, and usage telemetry
 
-- `darkf doctor <ref>` — preflight before a run: workflow resolves + loads,
-  exports `agentRunner`, agent binaries resolvable, cwd sane (it FAILS when
-  run from inside the darkf checkout — the classic wrong-target mistake; the
-  agent cwd follows rootDir = invocation cwd).
+- `darkf validate <ref>` — preflight before a run: workflow resolves + loads,
+  exports `agentRunner`, state graph structure valid.
+- `darkf doctor` — environment only: agent binaries resolvable, cwd sane (it
+  FAILS when run from inside the darkf checkout — the classic wrong-target
+  mistake; the agent cwd follows rootDir = invocation cwd), plus the state of
+  the bundled `darkf-*` skills per host — fixing skill drift is always
+  `darkf setup`.
 - `darkf report [--run <id>]` — per-dispatch efficacy/efficiency view from the
   journal: span, dispatch table (state / duration / outcome), visit histogram,
   crash reasons.

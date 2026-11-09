@@ -182,12 +182,13 @@ EOF
 git add tasks.json && git commit -m "seed tasks"
 ```
 
-`darkf doctor` is worth running first here — it checks the target is a git
-repo, among other things, and a missing `tasks.json` or bad JSON in it
-fails fast as a script crash rather than silently doing nothing:
+`darkf validate` is worth running first here — it checks the workflow
+resolves and loads. A missing `tasks.json` or bad JSON in it fails fast
+as a script crash rather than silently doing nothing. `darkf doctor`
+checks the machine side — the target is a git repo, among other things:
 
 ```sh
-bunx darkf doctor darkf/examples/task-queue
+bunx darkf validate darkf/examples/task-queue
 ```
 
 ## Watch it manually

@@ -49,7 +49,16 @@ import {
   stallWarning,
   type TerminalState,
 } from "../kit/status.ts";
-import { type UpdateDeps, updateGate, upgradeCmd } from "./update.ts";
+import {
+  describeFailure,
+  failingSkills,
+  type ProbeDeps,
+  type SkillsDeps,
+  skillsCheck,
+  skillsProbeGate,
+  syncAll,
+} from "./setup.ts";
+import { type UpdateDeps, updateGate, upgradeWithSkills } from "./update.ts";
 
 const INDEX_PATH = fileURLToPath(import.meta.url);
 // Fixed, not yet measured against a cold `bun` import on real hosts — see
@@ -229,7 +238,14 @@ function describeValidationError(err: WorkflowValidationError): string {
   }
 }
 
-async function doctorCmd(args: string[]): Promise<number> {
+/**
+ * Workflow checks (skill-setup spec: command split). `darkf validate <ref>`
+ * inherits doctor's artifact-level checks unchanged: workflow resolution,
+ * module load, exports, structure validation. Skill state is deliberately
+ * not checked here — a workflow can be sound on a machine whose skills are
+ * stale; the two verdicts stay independent.
+ */
+async function validateCmd(args: string[]): Promise<number> {
   const ref = args[0];
   let fail = false;
   const check = (label: string, ok: boolean, detail?: string) => {
@@ -239,7 +255,7 @@ async function doctorCmd(args: string[]): Promise<number> {
 
   // 1. workflow resolution
   if (ref === undefined) {
-    check("workflow ref", false, "usage: darkf doctor <workflow-ref-or-path>");
+    check("workflow ref", false, "usage: darkf validate <ref-or-path>");
     return Promise.resolve(1);
   }
   const candidates = workflowCandidates(ref);
@@ -264,7 +280,7 @@ async function doctorCmd(args: string[]): Promise<number> {
       check(
         "exports `agentRunner`",
         typeof mod.agentRunner?.run === "function",
-        "agent states need a runner; built-ins live in src/agents/",
+        "agent states need a runner; built-ins live in src/kit/agents/",
       );
       if (typeof mod.workflow?.states === "object" && typeof mod.workflow?.initial === "string") {
         try {
@@ -295,12 +311,32 @@ async function doctorCmd(args: string[]): Promise<number> {
     check("exports `agentRunner`", false, "skipped — no resolved workflow");
   }
 
-  // 3. agent binaries
+  return Promise.resolve(fail ? 1 : 0);
+}
+
+/**
+ * Environment checks (skill-setup spec: command split). `darkf doctor` takes
+ * no ref and is strictly machine-level: agent binaries, cwd sanity, and the
+ * skills section. Read-only — fixing skill drift is always `darkf setup`.
+ */
+function doctorCmd(args: string[]): number {
+  if (args[0] !== undefined) {
+    // The command is young; no silent compatibility shim.
+    console.log("usage: darkf doctor takes no ref — darkf validate <ref> for workflow checks");
+    return 1;
+  }
+  let fail = false;
+  const check = (label: string, ok: boolean, detail?: string) => {
+    console.log(`${ok ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
+    if (!ok) fail = true;
+  };
+
+  // 1. agent binaries
   for (const bin of ["claude", "opencode"]) {
     check(`agent binary '${bin}'`, Bun.which(bin) !== null);
   }
 
-  // 4. cwd sanity — the run-1 mistake: targeting a repo while sitting in the darkf checkout
+  // 2. cwd sanity — the run-1 mistake: targeting a repo while sitting in the darkf checkout
   const cwd = process.cwd();
   const insideSelf = cwd.startsWith(selfRoot());
   check(
@@ -311,7 +347,29 @@ async function doctorCmd(args: string[]): Promise<number> {
   const gitRoot = projectRoot();
   check("cwd is inside a git repo", existsSync(join(gitRoot, ".git")), gitRoot);
 
-  return Promise.resolve(fail ? 1 : 0);
+  // 3. skills — every known harness always named; `harness not present` is
+  // informational and always passes (the binaries check above is the failure
+  // signal for an absent binary).
+  for (const h of skillsCheck(skillsDeps())) {
+    const label = `skills (${h.host})`;
+    if (!h.present) {
+      check(label, true, "harness not present");
+      continue;
+    }
+    const failing = failingSkills(h);
+    if (failing.length === 0) {
+      const total = Object.keys(h.states).length;
+      check(label, true, `${total}/${total} installed`);
+    } else {
+      check(
+        label,
+        false,
+        `${failing.map(([skill, state]) => describeFailure(skill, state)).join("; ")} — run: darkf setup`,
+      );
+    }
+  }
+
+  return fail ? 1 : 0;
 }
 
 function workflowsCmd(): void {
@@ -992,6 +1050,28 @@ function updateStateFile(): string {
   return join(process.env.HOME ?? "", ".local", "state", "darkf", "last-update-check.json");
 }
 
+// Same XDG state scheme, for the daily skills probe (skill-setup spec).
+function skillsProbeStateFile(): string {
+  const xdg = process.env.XDG_STATE_HOME;
+  if (xdg) return join(xdg, "darkf", "last-skills-check.json");
+  return join(process.env.HOME ?? "", ".local", "state", "darkf", "last-skills-check.json");
+}
+
+// The bundled skills dir is package-relative (sibling of workflows/), so a
+// global install and a sibling checkout both work — the same selfRoot()
+// mechanism workflows/ resolution already uses.
+function skillsDeps(): SkillsDeps {
+  return {
+    home: process.env.HOME ?? "",
+    bundledDir: resolve(dirname(INDEX_PATH), "..", "..", "skills"),
+    existsBinary: (name: string) => Bun.which(name) !== null,
+  };
+}
+
+function probeDeps(): ProbeDeps {
+  return { ...skillsDeps(), stateFile: skillsProbeStateFile() };
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
 
@@ -1007,8 +1087,22 @@ async function main(): Promise<void> {
   };
   await updateGate(cmd, updateDeps);
 
+  // Daily skills probe (skill-setup spec): after the update gate, before the
+  // command's own output. setup and upgrade are exempt (they sync the skills
+  // themselves) and refresh the probe stamp. Never fatal — the outcome never
+  // changes the invoking command's exit code.
+  await skillsProbeGate(cmd, probeDeps());
+
   if (cmd === "upgrade") {
-    process.exit(await upgradeCmd(updateDeps));
+    // Skill sync after the install (skill-setup spec): the new package may
+    // ship new skill content, and the running process resolves the new
+    // bundled copies on disk. Best-effort: a sync failure is reported and
+    // exits non-zero, but never masks the upgrade itself.
+    process.exit(await upgradeWithSkills(updateDeps, skillsDeps()));
+    return;
+  }
+  if (cmd === "setup") {
+    process.exit(syncAll(skillsDeps()));
     return;
   }
   if (cmd === "workflows") {
@@ -1020,7 +1114,11 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "doctor") {
-    process.exit(await doctorCmd(rest));
+    process.exit(doctorCmd(rest));
+    return;
+  }
+  if (cmd === "validate") {
+    process.exit(await validateCmd(rest));
     return;
   }
   if (cmd === "render") {

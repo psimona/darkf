@@ -1,16 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { PICKER_PAGE_SIZE, pickerOrder, pickerPage, type PickerEntry } from "./locate.ts";
+import { PICKER_PAGE_SIZE, type PickerEntry, pickerOrder, pickerPage } from "./locate.ts";
 
 function mk(runId: string, startedAt: number, active: boolean): PickerEntry {
-  return { entry: { runId, startedAt, pid: 0, rootDir: "/p", schemaVersion: 1, status: "running" } as PickerEntry["entry"], active };
+  return {
+    entry: {
+      runId,
+      startedAt,
+      pid: 0,
+      rootDir: "/p",
+      schemaVersion: 1,
+      status: "running",
+    } as PickerEntry["entry"],
+    active,
+  };
 }
 
 describe("pickerOrder", () => {
   test("active sorts before inactive regardless of recency", () => {
-    const ordered = pickerOrder([
-      mk("old-live", 100, true),
-      mk("new-done", 999, false),
-    ]);
+    const ordered = pickerOrder([mk("old-live", 100, true), mk("new-done", 999, false)]);
     expect(ordered.map((e) => e.entry.runId)).toEqual(["old-live", "new-done"]);
   });
 
@@ -21,7 +28,12 @@ describe("pickerOrder", () => {
       mk("done-new", 300, false),
       mk("live-new", 200, true),
     ]);
-    expect(ordered.map((e) => e.entry.runId)).toEqual(["live-new", "live-old", "done-new", "done-old"]);
+    expect(ordered.map((e) => e.entry.runId)).toEqual([
+      "live-new",
+      "live-old",
+      "done-new",
+      "done-old",
+    ]);
   });
 
   test("input array is not mutated", () => {

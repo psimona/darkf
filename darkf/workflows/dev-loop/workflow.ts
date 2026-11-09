@@ -34,8 +34,8 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
-const RUN_DATE = "2026-11-01";
-const FEATURE = "usage-limit-backoff";
+const RUN_DATE = "2026-11-09";
+const FEATURE = "skill-setup";
 
 export const workflow: WorkflowDef = {
   initial: "Begin",
@@ -60,18 +60,20 @@ export const workflow: WorkflowDef = {
           retries: 1,
           prompt: `Implement the ${FEATURE} feature in this repository.
 
-First read docs/specs/${FEATURE}/spec.md. It is the contract: its Detection, Wait-and-resume, and Non-goals sections are locked — implement exactly what they specify, nothing more. docs/specs/${FEATURE}/design.md carries the component wiring and test plan; read it second.
+First read docs/specs/${FEATURE}/spec.md. It is the contract: its Decisions and Non-goals sections are locked — implement exactly what they specify, nothing more. The spec is the only contract artifact; no design.md exists for this feature.
 
-Resume semantics: if the working tree already implements the spec, verify that instead of re-implementing — read darkf/src/core/types.ts, darkf/src/engine/run.ts, and darkf/src/kit/agents/opencode.ts, confirm they match the spec, and finish "implemented" without rewriting.
+Resume semantics: if the working tree already implements part of the spec, verify that part instead of re-implementing. The bundled skills already exist and are final content — darkf/skills/darkf-usage/SKILL.md and darkf/skills/darkf-writing-workflows/SKILL.md. Do not rewrite them. Wire them into setup, doctor, packaging, and the docs move as the spec specifies.
 
 Deliverables (when not already present):
-- darkf/src/core/types.ts: CrashReason gains { kind: "usage-limit"; detail: string }; BaseLeafDef gains usageLimitRetryMs (default 30 * 60 * 1000) and usageLimitMaxWaitMs (default 24 * 60 * 60 * 1000) beside retries/timeoutMs; the running NodeStatus gains limitBackoff: { probe: number; nextAttemptAt: number; waitedMs: number }
-- darkf/src/engine/run.ts: in the AgentFailure catch, a usage-limit reason takes a new branch — it does not advance the attempt counter and does not consume def.retries; it accumulates waitedMs per node visit and, while waitedMs + retryMs <= maxWaitMs, sleeps retryMs while emitting running heartbeats carrying limitBackoff (probe index, nextAttemptAt, waitedMs), recomputes the attempt deadline from timeoutMs, and re-dispatches the same attempt; at the cap it takes the existing crashed() path with the last usage-limit reason. usage-limit stays out of NUDGEABLE_KINDS. The engine forwards previousFailure and agentSessionId to the next dispatch unchanged
-- darkf/src/kit/agents/opencode.ts: export function matchUsageLimit(stderr, stdout) — lowercase the non-JSON lines (skip lines that parse as JSON), match markers "usage limit", "rate limit", "limit exceeded", "429", return the first matched line. Call it ONLY in the existing exitCode !== 0 branch; on a match throw AgentFailure with crashReason { kind: "usage-limit", detail: matched line } and the evidence-gated agentSessionId (stepCount > 0, exactly as today); a no-match keeps the existing runner-error throw byte-for-byte. Beside the nudge path: when info.previousFailure?.kind === "usage-limit" AND info.agentSessionId is present, dispatch with -s <agentSessionId> and a short continuation prompt ("a provider usage limit interrupted your previous turn. Continue where you left off.") plus the handoff contract text, without replaying the full prompt; otherwise the fresh prompt path unchanged
-- darkf/src/kit/status.ts: limitWarning folded from the latest running status's limitBackoff (denominator ceil(maxWaitMs / retryMs)), printed by the status and monitor commands in darkf/src/cli/index.ts in the same one-line warn style as stallWarning/nudgeWarning: "warn: usage limit — probe 3/48, next attempt in 22m"
-- tests: matcher fixtures (the captured message "Usage limit reached for 5 hour." with a non-zero exit classifies usage-limit; a non-limit API error stays runner-error; a limit string inside an agent-authored JSON line does not match; an exit-0 + missing-handoff output containing a limit string stays handoff-missing), engine wait loop in darkf/src/engine/run.test.ts (retry fires after the interval with a shortened timer, def.retries not consumed, the cap crashes with probe count/total wait/detail, the deadline is recomputed after each wait), resume paths (with a session id the dispatch carries -s and the continuation prompt, without it the dispatch is fresh), and limitWarning rendering in darkf/src/kit/status.test.ts
+- darkf/src/cli/setup.ts (new): \`darkf setup\` — sync both bundled skills into every detected host's skills dir. Hosts are a table in code per the spec: claude code (~/.claude/skills, binary claude), opencode (~/.opencode/skills, opencode), codex cli (~/.codex/skills, codex), gemini cli (~/.gemini/skills, gemini), cursor (~/.cursor/skills, cursor-agent); a host is detected when its skills dir exists OR its binary is on PATH. Write policy: darkf-* is darkf's namespace — copy when missing; when present, replace the whole dir (copy bundled to a dot-prefixed temp dir inside the skills dir, remove the installed dir, rename into place) so the destination is an exact mirror. States missing/ok/differs per skill. Output: one host-detection line, then one line per host per skill. Creates a missing skills dir (mode 0755) for a detected host; skips an undetected host without creating anything. Exits non-zero when a present host still ends missing/differs after the sync attempt. Takes no flags and no positional args; never prompts.
+- \`darkf upgrade\` (darkf/src/cli/update.ts) runs the same sync after self-update, under a "skills:" header, best-effort: a sync failure is reported and exits non-zero but never masks the upgrade itself.
+- doctor/validate split in darkf/src/cli/index.ts: \`darkf doctor\` with no ref checks the environment only — agent binaries, cwd sanity, skills section. \`darkf validate <ref>\` inherits the workflow checks doctor has today (resolves, loads, exports, structure), unchanged lines and exit codes. Back-compat: \`darkf doctor <ref>\` prints the new usage and exits 1. The skills section names every known harness: per skill ok/missing/differs for a present harness, \`harness not present\` for an absent one; it writes nothing and exits non-zero only for missing/differs on a present harness, with \`run darkf setup\` as the fix hint. All three (doctor skills section, validate checks, setup sync) share one skills-check function. Fix doctor's stale runner hint while there: "built-ins live in src/agents/" — the real location is src/kit/agents/.
+- Daily probe: once per calendar day, the first darkf invocation after the update gate runs a skills-only check via the same shared function. State file per the spec (XDG state semantics like updateStateFile) stores the last probe date; missing or corrupt counts as never probed. Silent when every present harness is ok. On missing/differs, print one compact block (the failing lines plus "fix: run darkf setup") before the invoked command's own output. Never fatal — the probe never changes the invoking command's exit code. \`setup\` and \`upgrade\` skip the probe and refresh the state file.
+- Packaging: darkf/package.json gains "files": ["src", "workflows", "skills", "docs"].
+- Docs move: move site/src/content/docs/** to darkf/docs/** and rebase the site's content loading onto darkf/docs/ (site/src/content.config.ts, starlight docsLoader — rebase it, or if the loader cannot rebase, a prepack copy with a drift check per the spec). bun run build in site/ must still succeed.
+- Tests per the spec's Testing section: setup tests with deps injected like update.ts's UpdateDeps (home, bundledDir, existsBinary) covering host detection by dir alone / by binary / absent, copy and mirror semantics including leftover-file wipe and crashed-temp-dir replacement, state reporting, and exit codes; doctor/validate split tests; daily-probe tests (first-of-day runs, same-day skip, corrupt state file, silent-ok, block-on-failure, exemptions); the tarball smoke check (npm pack, temp-prefix install, run setup/doctor/render and the skill-referenced docs paths).
 
-Follow the existing code style of darkf/src/engine/run.ts, darkf/src/kit/agents/opencode.ts, and darkf/src/kit/status.ts. Do not commit. Do not touch files outside darkf/src/ and docs/specs/${FEATURE}/.
+Follow the existing code style of darkf/src/cli/index.ts and darkf/src/cli/update.ts. Do not commit. Do not touch files outside darkf/src/, darkf/package.json, darkf/skills/, darkf/docs/, site/, and docs/specs/${FEATURE}/.
 
 Finish with event "implemented". If the spec cannot be implemented as written, finish with event "blocked" and put the reason in the output. If a review demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { implemented: "Check", blocked: DONE, disputed: DONE },
@@ -88,7 +90,7 @@ Finish with event "implemented". If the spec cannot be implemented as written, f
           retries: 1,
           prompt: `You are repairing the ${FEATURE} implementation after a failed gate.
 
-The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md (component wiring in docs/specs/${FEATURE}/design.md) for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/.
+The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/, darkf/package.json, darkf/skills/, darkf/docs/, and site/.
 
 Finish with event "fixed". If the failure exposes a spec defect you cannot resolve in code, finish with event "blocked" and the reason. If the demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
           on: { fixed: "Check", blocked: DONE, disputed: DONE },
@@ -99,12 +101,16 @@ Finish with event "fixed". If the failure exposes a spec defect you cannot resol
           retries: 1,
           prompt: `You are an independent reviewer. Do not modify any files.
 
-Verify the working tree against docs/specs/${FEATURE}/spec.md (component wiring and test plan in docs/specs/${FEATURE}/design.md):
+Verify the working tree against docs/specs/${FEATURE}/spec.md:
 - inspect git status --porcelain in addition to git diff — agent-authored new files are invisible to git diff alone
-- check the types match the spec field for field: the usage-limit CrashReason kind (detail field), the BaseLeafDef usageLimitRetryMs/usageLimitMaxWaitMs defaults (30 min / 24 h), and the running NodeStatus limitBackoff fields (probe, nextAttemptAt, waitedMs)
-- check the engine branch: a usage-limit reason does not advance the attempt counter, does not consume def.retries, never sits in NUDGEABLE_KINDS, heartbeats carry limitBackoff during the wait, the deadline is recomputed after each wait, and the cap crash carries probe count, total wait, and detail
-- check the runner: matchUsageLimit runs ONLY in the exitCode !== 0 branch, scans only non-JSON lines, uses the spec's marker set, gates the session id on stepCount > 0, and keeps every other failure path byte-for-byte; the continuation path requires BOTH previousFailure usage-limit AND a session id, dispatches -s with the short continuation prompt plus the handoff contract text, and does not replay the full prompt
-- check the tests cover the spec: matcher fixtures including the exit-0 exclusion, the engine wait loop (interval, no retry consumption, cap crash facts, deadline recompute), resume vs fresh dispatch, and limitWarning rendering
+- check the host table matches the spec exactly: five harnesses (claude code, opencode, codex cli, gemini cli, cursor), their skills dirs and binary names, and dir-exists OR binary-on-PATH detection
+- check the write policy: darkf-* namespace only, dir replacement not file merge (temp-dir copy, remove, rename), exact-mirror destinations, no flags, no prompts, undetected hosts skipped without dir creation
+- check the upgrade sync: runs after self-update under a "skills:" header, best-effort, same code path as setup
+- check the doctor/validate split: doctor with no ref = environment only (binaries, cwd sanity, skills section); validate <ref> inherits the workflow checks with unchanged lines and exit codes; doctor <ref> back-compat prints usage and exits 1; the skills section names every known harness with the spec's states and exit rules; the stale "src/agents/" hint is fixed to src/kit/agents/
+- check the daily probe: once per calendar day on first invocation after the update gate, skills-only via the shared function, spec state file with missing/corrupt treated as never probed, silent on ok, compact block plus fix hint on missing/differs, never fatal, setup/upgrade exempt and refreshing the state file
+- check packaging: package.json files allowlist exactly ["src", "workflows", "skills", "docs"]; docs moved to darkf/docs/; the site still builds from the moved docs (loader rebase or prepack copy with drift check)
+- check the bundled skills are byte-unchanged: darkf/skills/darkf-usage/SKILL.md and darkf/skills/darkf-writing-workflows/SKILL.md
+- check the tests cover the spec's Testing section: setup deps-injection fixtures, mirror semantics, doctor/validate split, daily probe behaviors, tarball smoke check
 - you may run "bun test darkf/src" and "bun run lint" yourself
 
 Approve only if the implementation fulfills the spec. Otherwise list every required change concretely in the output.
