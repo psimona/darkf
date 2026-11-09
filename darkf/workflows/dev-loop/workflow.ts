@@ -126,14 +126,17 @@ Finish with event "approved" or event "changes_requested".`,
 
 Read docs/specs/${FEATURE}/spec.md (or prd.md/design.md when present) for what the feature does, and run git diff master plus git status --porcelain to see what shipped.
 
-Update only what the feature's user-facing surface touches:
+Docs must match the spec when this run lands — drift accumulates one stale page at a time. Update everything the feature's surface touches:
 - README.md — CLI flags/commands, plugin behavior, setup steps that changed
-- docs-site pages under site/src/content/docs/ — the affected guide or reference page; add a short new guide only for a genuinely user-visible capability
-- cross-references in docs/ that now point at moved or renamed paths
+- packaged docs under darkf/docs/ — the site renders from these files, so they are the docs:
+  - reference/cli-commands.md for any CLI surface change (new command, flag, exit code, default)
+  - the guides and concepts pages the feature's surface touches — re-read them and fix stale paths, stale command names, and claims the feature made wrong
+  - start-here/install.md when setup, packaging, or install steps changed
+- cross-references anywhere in darkf/docs/ or README.md that now point at moved or renamed paths
 
 Do NOT touch: ROADMAP.md, darkf/feedback/, docs/specs/ (the spec archive move and roadmap entry are post-merge human curation), any file under darkf/src/ or darkf-opencode-plugin/.
 
-If nothing user-facing changed, or the docs need no edit, finish with event "skipped" and put the one-line reason in the output. Otherwise make the edits and finish with event "documented". If the docs cannot be updated (for example the site is broken), finish with event "blocked" and the reason.`,
+If nothing user-facing changed and no doc drifted, finish with event "skipped" and put the one-line reason in the output. Otherwise make the edits and finish with event "documented". If the docs cannot be updated (for example the site is broken), finish with event "blocked" and the reason.`,
           on: { documented: "Finish", skipped: "Finish", blocked: DONE },
         },
       },
