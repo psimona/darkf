@@ -61,8 +61,10 @@ test("tarball smoke: allowlist ships the runtime dirs and the installed CLI work
     expect(existsSync(join(prefix, "bin", "darkf"))).toBe(true);
 
     // Temp HOME and state; the probe stamped so its block stays out of the way.
+    // The home carries a .claude/skills dir so host detection works by dir
+    // alone — CI runners have no claude binary on PATH.
     const home = join(root, "home");
-    mkdirSync(home);
+    mkdirSync(join(home, ".claude", "skills"), { recursive: true });
     const stateHome = join(root, "state");
     mkdirSync(stateHome, { recursive: true });
     writeProbeState(join(stateHome, "darkf", "last-skills-check.json"), {
