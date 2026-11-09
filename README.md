@@ -1,12 +1,25 @@
 # darkf
 
-A small, typed workflow engine for agent + script state graphs.
+Deterministic automation with LLM agents. The engine for your dark
+factory.
 
-darkf runs a workflow — a plain TypeScript object describing states and
-transitions — as a sequence of **agent** nodes (an LLM call) and **script**
-nodes (a plain function), dispatched through one shared contract. It
-journals every step to disk, so "did it finish, and how" is always
-answerable from a file, not a live process.
+darkf runs your automation as a workflow: a typed state graph in plain
+TypeScript describing steps and what happens next. Some steps ask an AI
+agent to do the work; some steps are plain code. You decide which is
+which.
+
+Everything a run does is journaled to disk. Finished, failed, or stuck —
+the answer is on disk, not in a terminal you forgot to watch.
+
+When a step fails, the run stops right there, and you see which step and
+why. Crashes stay crashes and verdicts stay verdicts — a failing agent
+never reaches your routing logic. Retries, timeouts, usage-limit backoff,
+cycle limits, and the journal are the engine's job, not your workflow's.
+
+Writing a workflow needs no setup. Describe the steps in plain words and
+a skill writes the workflow — best practices included. Every workflow
+renders as a mermaid diagram, so the whole path stays visible and you
+stay in control.
 
 Two node types, one dispatch contract:
 
@@ -15,9 +28,7 @@ Two node types, one dispatch contract:
   takes any other.
 - **script** — plain TypeScript, run in-process.
 
-Crashes stay crashes and verdicts stay verdicts — a failing agent never
-reaches your routing logic. Retries, timeouts, usage-limit backoff,
-cycle limits, and the journal are the engine's job, not your workflow's.
+Start with one workflow. Grow it into your dark factory.
 
 ## Install
 
