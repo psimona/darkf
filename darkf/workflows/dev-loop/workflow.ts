@@ -11,10 +11,14 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 // with blueprint's rails, Feedback writes the run retrospective under
 // darkf/feedback/.
 //
-// Run from the target repo root with a globally installed darkf (never the
-// workspace symlink — doctor's selfRoot guard fails inside the checkout):
+// Run from the target repo root with the released engine from the npm
+// registry (never the workspace symlink — doctor's selfRoot guard fails
+// inside the checkout; never a source-tarball install — repeated
+// install:global runs corrupt bun's global manifest with duplicate
+// dependency keys):
 //
-//   bun run install:global   # once, to refresh the global binary
+//   bun install -g @psimona/darkf@latest   # released engine; the working
+//                                          # tree's workflow rides the branch
 //   darkf validate darkf/workflows/dev-loop
 //   darkf start darkf/workflows/dev-loop "message" --allow-dirty-workflow
 //

@@ -8,11 +8,19 @@ came from a failure or near-failure in that run.
 
 Install options:
 
-- **Dev machine (tracks the checkout — recommended while darkf is moving):**
-  `cd darkf && bun link` → a bare `darkf` on PATH that always runs
-  the working clone.
+- **Registry (default):** `bun install -g @psimona/darkf` — the released
+  engine. Run workflow authoring against this; the workflows themselves
+  can still live in a working tree (pass their path as the ref).
+- **Dev machine (tracks the checkout):** `cd darkf && bun link` → a bare
+  `darkf` on PATH that always runs the working clone. Use only when you
+  need unreleased engine changes; prefer the registry otherwise.
 - **Other machines (git head, no version):** `bun add -g git+<repo-url>` or
   `npm i -g git+<repo-url>` — the monorepo root exposes the `darkf` bin.
+
+Avoid repeated source-tarball installs (`npm pack` + `bun install -g
+<tgz>`, e.g. an `install:global` script): bun's global manifest
+accumulates a duplicate dependency key per install until the resolver
+fails with DependencyLoop.
 
 `rootDir` — the run-artifact root AND the agent runner's working directory —
 is the **invocation cwd**, not the workflow dir:
