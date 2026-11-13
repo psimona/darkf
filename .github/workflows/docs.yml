@@ -1,7 +1,7 @@
 name: Deploy docs
 
 # GitHub Pages hosting requires GitHub's own Pages deploy action — see
-# docs/specs/docs-site/spec.md.
+# docs/specs/_built/docs-site/spec.md.
 #
 # The build is driven directly (not via withastro/action) because the site
 # builds through Bun's node-compat (bun x astro build), matching the local
@@ -12,6 +12,7 @@ on:
     branches: [master]
     paths:
       - "site/**"
+      - "darkf/docs/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -34,17 +35,35 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Playwright Chromium (build-time mermaid rendering)
-        run: bunx playwright install --with-deps chromium
-        working-directory: site
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
+        working-directory: site
+
+      # Must run AFTER `bun install`: with node_modules present, bunx uses the
+      # locked playwright and downloads the matching browser revision. Run
+      # first, bunx resolves latest playwright instead, whose browser revision
+      # does not match the locked one and mermaid rendering fails at build
+      # time (glob-loader then publishes the affected pages without body).
+      - name: Install Playwright Chromium (build-time mermaid rendering)
+        run: bunx playwright install --with-deps chromium
         working-directory: site
 
       - name: Build site
         run: bun x astro build
         working-directory: site
+
+      # The glob loader logs markdown render errors but still emits the page
+      # with an empty body and exits 0 — a broken mermaid render would deploy
+      # as a blank page. Fail the build instead of shipping it.
+      - name: Fail on empty page bodies
+        run: |
+          empty=$(find site/dist -name '*.html' ! -name '404.html' \
+            -exec grep -l 'sl-markdown-content"></div' {} + || true)
+          if [ -n "$empty" ]; then
+            echo "Pages with empty body:"
+            echo "$empty"
+            exit 1
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
