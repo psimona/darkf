@@ -1243,3 +1243,116 @@ test("the attempt deadline is recomputed after each usage-limit wait, so a slept
   expect(calls).toBe(2);
   expect(result.node.phase).toBe("succeeded");
 });
+
+// Bare-payload coercion (run 0a1b2ca3): an agent result without an `event`
+// field is a payload, not an envelope — the engine wraps it so the payload
+// always rides `handoff.output` and a payload-internal `output` key can
+// never hijack the channel downstream.
+
+test("wraps an event-less agent result as { output: payload }", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Work",
+    states: {
+      Work: { type: "agent", prompt: "work", next: "Gate" },
+      Gate: { type: "script", file: "gate.ts", next: EXIT },
+    },
+  };
+  let seen: NodeResult | undefined;
+  const scriptRunner: ScriptRunner = {
+    run: async (_id, _def, handoff) => {
+      seen = handoff;
+      return { event: undefined };
+    },
+  };
+  const agentRunner: AgentRunner = {
+    run: async () => ({ behavior_ok: true, gaps: [] } as unknown as NodeResult),
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner });
+
+  expect(result.node.phase).toBe("succeeded");
+  expect(seen?.output).toEqual({ behavior_ok: true, gaps: [] });
+});
+
+test("hybrid payload: flat claim plus nested output survives to handoff.output", async () => {
+  // The exact run 0a1b2ca3 shape: the nested summary used to shadow the
+  // passing verdict when the raw object rode the handoff unwrapped.
+  const workflow: WorkflowDef = {
+    initial: "Verify",
+    states: {
+      Verify: { type: "agent", prompt: "verify", next: "Gate" },
+      Gate: { type: "script", file: "gate.ts", next: EXIT },
+    },
+  };
+  let seen: NodeResult | undefined;
+  const scriptRunner: ScriptRunner = {
+    run: async (_id, _def, handoff) => {
+      seen = handoff;
+      return { event: undefined };
+    },
+  };
+  const agentRunner: AgentRunner = {
+    run: async () =>
+      ({
+        behavior_ok: true,
+        gaps: [],
+        output: { summary: "All 7 MUST requirements verified" },
+      }) as unknown as NodeResult,
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner });
+
+  expect(result.node.phase).toBe("succeeded");
+  const output = seen?.output as { behavior_ok?: boolean; output?: { summary?: string } };
+  expect(output.behavior_ok).toBe(true);
+  expect(output.output?.summary).toBe("All 7 MUST requirements verified");
+});
+
+test("envelope results (event present) are passed through untouched", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Work",
+    states: {
+      Work: { type: "agent", prompt: "work", on: { done: "Gate" } },
+      Gate: { type: "script", file: "gate.ts", next: EXIT },
+    },
+  };
+  let seen: NodeResult | undefined;
+  const scriptRunner: ScriptRunner = {
+    run: async (_id, _def, handoff) => {
+      seen = handoff;
+      return { event: undefined };
+    },
+  };
+  const payload = { verdict: "clean" };
+  const agentRunner: AgentRunner = {
+    run: async () => ({ event: "done", output: payload }),
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner });
+
+  expect(result.node.phase).toBe("succeeded");
+  expect(seen?.output).toEqual(payload);
+});
+
+test("script results are never coerced", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Prep",
+    states: {
+      Prep: { type: "script", file: "prep.ts", next: "Gate" },
+      Gate: { type: "script", file: "gate.ts", next: EXIT },
+    },
+  };
+  let seen: NodeResult | undefined;
+  const scriptRunner: ScriptRunner = {
+    run: async (id, _def, handoff) => {
+      if (id === "Prep") return { probe: 1 } as unknown as NodeResult; // no event, no output
+      seen = handoff;
+      return { event: undefined };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner: noopAgent, scriptRunner });
+
+  expect(result.node.phase).toBe("succeeded");
+  expect(seen).toEqual({ probe: 1 }); // raw handoff, not wrapped
+});

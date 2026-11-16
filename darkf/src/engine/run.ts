@@ -296,7 +296,19 @@ export async function run(opts: RunOptions): Promise<RunResult> {
             continue attemptLoop;
           }
           agentSessionId = raw.agentSessionId ?? agentSessionId;
-          const validationError = def.validate?.(raw, handoff);
+          // Bare-payload coercion (agent nodes only). A result without an
+          // `event` field is the agent's raw payload, not an envelope —
+          // wrap it so the payload always rides the reserved `output`
+          // channel. Without this, a payload that itself carries an
+          // `output` key hijacks the channel downstream (run 0a1b2ca3: a
+          // hybrid `{behavior_ok, gaps, output: {summary}}` shipped the
+          // summary as the payload and shadowed the passing verdict).
+          // Routing is untouched: `resolveTarget` still reads `raw.event`,
+          // and event-less results keep falling through `def.next`.
+          const result_ = def.type === "agent" && raw.event === undefined
+            ? ({ output: raw } as NodeResult)
+            : raw;
+          const validationError = def.validate?.(result_, handoff);
           if (validationError !== undefined) {
             reason = { kind: "validation-failed", message: validationError };
             continue attemptLoop;
@@ -311,7 +323,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
             continue attemptLoop;
           }
 
-          result = raw;
+          result = result_;
           target = resolved;
           reason = undefined;
           break attemptLoop;
