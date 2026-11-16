@@ -67,6 +67,25 @@ Workflows outside the darkf package use absolute paths into the package, as in t
 - The handoff contains only the immediate predecessor result. If Verify must report what Implement did, Verify must relay it in its own output. Nothing carries forward unless each node re-emits it.
 - Do not ask the agent to echo events in prose. Describe the event semantics. The runner appends the mechanics.
 
+### Reading an agent claim off the handoff
+
+Agents emit the claim in several shapes: flat at the handoff top level,
+nested under `output`, or hybrid — flat claim plus a nested summary block.
+Never read `handoff.output ?? handoff`. A truthy `output` without the claim
+field shadows a correct flat verdict (run 0a1b2ca3: a passing
+`behavior_ok: true` verdict was declared invalid, and the repair loop
+tripped the composite's cycle budget on a healthy tree). Scan the
+candidates and prefer whichever shape actually carries the claim field:
+
+```ts
+const claim = [handoff.output, handoff].find(
+  (c) => c != null && typeof (c as Claim).verdict_field === "boolean",
+);
+```
+
+Pair this with the maxCycles rule above: one false rejection costs a full
+repair round, and the budget counts dispatches, not repairs.
+
 ## Scripts
 
 A script default export receives `(handoff, info)` and returns a `NodeResult`. `info.rootDir` is the invocation cwd (the target repo). Use it for every repo path so the workflow stays location-independent. `file:` resolves against `<workflow-dir>/scripts/`, not the workflow dir.
