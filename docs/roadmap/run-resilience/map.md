@@ -114,15 +114,17 @@ to diagnose it without opening opencode's server log.
   last tool error, step count, etc.) — observability only, no effect on
   retry or nudge behavior. Unblocked: session-nudge's kind split
   (`handoff-missing`/`handoff-unparseable`) has landed.
-- **usage-limit-backoff** — spec approved (2026-11-01), ready to build:
-  `docs/specs/usage-limit-backoff/spec.md`. Detect a provider usage-limit
-  failure (new `usage-limit` `CrashReason`, markers confirmed against a
-  live capture), then wait and re-probe at a fixed interval (default
-  30 min, capped at 24 h) instead of burning all retries against the
-  quota wall — reset timestamps in the provider message are unreliable
-  (wrong timezone), so fixed-interval polling is deliberate. Sits next to
-  provider-health-gate: that ticket fail-fasts a *hung* backend; this one
-  waits out a *quota wall*.
+
+## Open tickets
+
+- **stalled-stream-outruns-stall-warn** — live incident (2026-11-11,
+  consumer run `b5f76215`): a provider stream stalled silently for 4.5+
+  minutes with a green heartbeat; the 15-minute placeholder threshold
+  never warned, warn-only acts never fire, and the supervisor hand-killed
+  the agent to reach the designed retry. Measures the placeholder once
+  (~4 min human diagnosis), questions warn-only for detached runs, and
+  reports `agentStepCount` reading the wrong event stream.
+  `tickets/stalled-stream-outruns-stall-warn.md`.
 
 ## Not yet specified (fog)
 
