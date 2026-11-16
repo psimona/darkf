@@ -44,8 +44,14 @@ const tui: TuiPlugin = async (api) => {
   });
 };
 
-const plugin: TuiPluginModule & { id: string } = {
+// The installed opencode CLI validates every plugin module's default export
+// against a generic {id, setup} shape before it even looks at `tui` — the
+// published @opencode-ai/plugin types don't reflect this, so `setup` is a
+// no-op here purely to satisfy that runtime check; `tui` is what's actually
+// invoked for TUI activation.
+const plugin: TuiPluginModule & { id: string; setup: () => Promise<void> } = {
   id: "darkf.visualizer",
+  setup: async () => {},
   tui,
 };
 

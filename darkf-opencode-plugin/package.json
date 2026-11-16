@@ -9,18 +9,18 @@
     "@psimona/darkf": "file:../darkf"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.14.0",
-    "@opentui/core": "^0.1.99",
-    "@opentui/solid": "^0.1.99",
+    "@opencode-ai/plugin": "^1.19.5",
+    "@opentui/core": "^0.9.1",
+    "@opentui/solid": "^0.9.1",
     "solid-js": "1.9.12"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.14.0",
-    "@opentui/core": ">=0.1.99",
-    "@opentui/solid": ">=0.1.99",
+    "@opencode-ai/plugin": ">=1.19.5",
+    "@opentui/core": ">=0.9.0",
+    "@opentui/solid": ">=0.9.0",
     "solid-js": "1.9.12"
   },
   "engines": {
-    "opencode": ">=1.14.0"
+    "opencode": ">=1.19.5"
   }
 }
