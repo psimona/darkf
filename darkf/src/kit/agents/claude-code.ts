@@ -17,7 +17,7 @@ import {
 // Mirrors darkf-engine's own DEFAULT_TIMEOUT_MS (run.ts) so this runner can
 // kill its own subprocess in step with the engine's timeout instead of
 // leaving it running past the point where the engine has moved on — see
-// docs/specs/agent-handoff/spec.md's retry-overwrite race note.
+// docs/specs/_built/agent-handoff/spec.md's retry-overwrite race note.
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
 function buildPrompt(
@@ -102,7 +102,7 @@ export const claudeCodeRunner: AgentRunner = {
     const permissionMode =
       (agentConfig.permissionMode as string | undefined) ?? "bypassPermissions";
     const model = agentConfig.model as string | undefined;
-    // Same-session nudge (docs/specs/session-nudge/spec.md): when the
+    // Same-session nudge (docs/specs/_built/session-nudge/spec.md): when the
     // previous attempt failed in a repairable way and we have its session
     // id, send a short corrective message into that session instead of
     // replaying the full prompt. `--resume` itself is unconditional on

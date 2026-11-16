@@ -6,7 +6,7 @@ import rehypeMermaid from 'rehype-mermaid';
 // https://astro.build/config
 // Project-page subpath for GitHub Pages (<org>.github.io/darkf). Flip to a
 // custom domain's "/" base if darkf ever gets one — see
-// docs/specs/docs-site/spec.md's open decisions.
+// docs/specs/_built/docs-site/spec.md's open decisions.
 const base = '/darkf';
 
 // The docs content lives in the package (darkf/docs/) and is loaded from

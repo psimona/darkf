@@ -5,7 +5,7 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 // feedback.
 //
 // The darkf-on-darkf pilot, expanded after its first real run built the CLI
-// self-update feature (docs/specs/self-update/). Shape ported from
+// self-update feature (docs/specs/_built/self-update/). Shape ported from
 // blueprint's build-backend: Begin cuts the feature branch, the composite
 // bounds the implement/fix/review cycle, Finish squash-merges onto master
 // with blueprint's rails, Feedback writes the run retrospective under

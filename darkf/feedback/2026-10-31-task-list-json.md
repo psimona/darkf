@@ -10,7 +10,7 @@
 
 - One pass through the loop: Implement → Check → Fix → Check → Review approved → merged. No retry loops.
 - All gates green at merge: secret-scan, typecheck, lint, arch-check, darkf 179 tests, plugin 12 tests, coverage at ~96% lines.
-- Implementation matched the spec field for field (`docs/specs/task-list-json/spec.md`); the reviewer verified types, decisions, and tests against it and approved with no change requests.
+- Implementation matched the spec field for field (`docs/specs/_built/task-list-json/spec.md`); the reviewer verified types, decisions, and tests against it and approved with no change requests.
 - `parseTaskList` narrowing is proven by tests: legacy `moscow` and task-side `requirements` are dropped, bad unions and non-object roots rejected with path-prefixed errors.
 - The plugin reads `tasks.json` via the existing 1s poll plus an `fs.watch` with the same retry-until-exists pattern as the journal watcher; teardown cleans up both.
 

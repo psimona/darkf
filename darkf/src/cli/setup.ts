@@ -1,4 +1,4 @@
-// Skill setup (docs/specs/skill-setup): the shared skills-check core, the
+// Skill setup (docs/specs/_built/skill-setup): the shared skills-check core, the
 // `darkf setup` sync, and the daily first-invocation probe. The bundled
 // darkf-* skills ship inside the package (darkf/skills/); every dependency
 // arrives via deps objects, so the whole module runs in tests without a real

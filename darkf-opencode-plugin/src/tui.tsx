@@ -11,7 +11,7 @@ const tui: TuiPlugin = async (api) => {
 
   // Fires once per run, the instant it's first observed — including a run
   // with no session bound (the `home`-screen case; see spec:
-  // docs/specs/opencode-overlay-dialog/spec.md). Unconditional auto-open
+  // docs/specs/_built/opencode-overlay-dialog/spec.md). Unconditional auto-open
   // either way: a darkf-only view beats no view when there's no chat to
   // replace, and `PlanGraph`/`SupervisorPanel` degrade on their own when
   // `supervisor` is absent. `openOverlay` never navigates, so this never

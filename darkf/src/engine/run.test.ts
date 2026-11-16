@@ -836,7 +836,7 @@ test("open dispatches heartbeat the journal (live runtime)", async () => {
   rmSync(rootDir, { recursive: true, force: true });
 });
 
-// --- session-nudge (docs/specs/session-nudge/spec.md) ---
+// --- session-nudge (docs/specs/_built/session-nudge/spec.md) ---
 
 test("nudges a handoff-missing AgentFailure in-session, consuming no retry", async () => {
   const workflow: WorkflowDef = {
@@ -1067,7 +1067,7 @@ test("FAILED's terminal journal entry carries the failing node's result as its e
   }
 });
 
-// --- usage-limit-backoff (docs/specs/usage-limit-backoff/spec.md) ---
+// --- usage-limit-backoff (docs/specs/_built/usage-limit-backoff/spec.md) ---
 
 const usageLimitFailure = () =>
   new AgentFailure("Usage limit reached for 5 hour.", {

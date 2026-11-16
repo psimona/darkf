@@ -1,6 +1,6 @@
 # Council: workflow-validation spec review
 
-**Question:** Should darkf add a "workflow validation" feature (`docs/specs/workflow-validation/spec.md`) that walks the whole workflow graph once, eagerly, at run start, to catch bad definitions (unresolved targets, composite-initial cycles, dead-end leaves) before any dispatch happens, instead of discovering them lazily mid-run? Evaluate the design itself — correctness, scope, hidden problems.
+**Question:** Should darkf add a "workflow validation" feature (`docs/specs/_built/workflow-validation/spec.md`) that walks the whole workflow graph once, eagerly, at run start, to catch bad definitions (unresolved targets, composite-initial cycles, dead-end leaves) before any dispatch happens, instead of discovering them lazily mid-run? Evaluate the design itself — correctness, scope, hidden problems.
 
 **Members:** Devil's Advocate, Optimist, Realist (fixed core) + Runtime/Engine Internals, Build/Tooling Engineer (dynamic, matched to this question's concerns: engine-runtime-semantics dependence, implementability/false-positives).
 

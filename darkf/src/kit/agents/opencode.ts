@@ -54,7 +54,7 @@ export interface StepFinishScan {
 // installed opencode binary — matching on "step_finish" (underscore) here
 // silently never matched, so this capture never actually fired.
 //
-// Extended (docs/specs/session-nudge/spec.md) to also pull `part.sessionID`
+// Extended (docs/specs/_built/session-nudge/spec.md) to also pull `part.sessionID`
 // and a count of step-finish events seen, in the same single pass:
 // `stepCount` is the positive-evidence gate for ever reporting a session id
 // at all — this is the resumability fix for the session that hung 15
@@ -84,7 +84,7 @@ export function scanStepFinish(stdout: string): StepFinishScan {
   return { reason, sessionId, stepCount };
 }
 
-// Agent-liveness (docs/specs/agent-liveness/spec.md): a stalled LLM backend
+// Agent-liveness (docs/specs/_built/agent-liveness/spec.md): a stalled LLM backend
 // still produces a healthy engine heartbeat, because the engine only knows
 // the process is alive, not whether the agent is making progress. Reading
 // stdout incrementally (rather than once, at exit, as `scanStepFinish`'s
@@ -132,7 +132,7 @@ export async function readIncrementally(
 // dispatch's failure reason; if the same dispatch key runs again, the
 // retry's prompt opens with the reason so it can correct course (e.g.
 // "handoff not written", "handoff unparseable", exit stderr tail).
-// Unaffected by same-session nudging (docs/specs/session-nudge/spec.md):
+// Unaffected by same-session nudging (docs/specs/_built/session-nudge/spec.md):
 // this cache covers the fresh-session case, nudging covers the
 // same-session case, and the two never fire on the same attempt.
 const lastFailures = new Map<string, string>();
@@ -152,7 +152,7 @@ function contextBlock(rootDir: string, runId: string): string {
   }
 }
 
-// Usage-limit detection (docs/specs/usage-limit-backoff/spec.md, Detection):
+// Usage-limit detection (docs/specs/_built/usage-limit-backoff/spec.md, Detection):
 // a provider quota wall surfaces as an API-level error — opencode exits
 // non-zero with the provider's message in its output. Scan stderr and
 // non-JSON stdout lines ONLY: stdout's NDJSON lines are event objects, i.e.
@@ -211,14 +211,14 @@ export const opencodeRunner: AgentRunner = {
 
     const dispatchKey = `${info.runId}:${info.step}:${id}`;
 
-    // Same-session nudge (docs/specs/session-nudge/spec.md): when the
+    // Same-session nudge (docs/specs/_built/session-nudge/spec.md): when the
     // previous attempt failed in a repairable way and we have its session
     // id, send a short corrective message into that session instead of a
     // fresh prompt. `-s` resume is scoped strictly to this case — see the
     // "No -s outside a nudge" note below.
     const nudge = nudgeMessage(info, path);
 
-    // Post-limit continuation (docs/specs/usage-limit-backoff/spec.md, Wait
+    // Post-limit continuation (docs/specs/_built/usage-limit-backoff/spec.md, Wait
     // and resume): when the engine re-dispatches this attempt after waiting
     // out a usage limit, resume the interrupted session with a short
     // continuation prompt instead of replaying the full fresh prompt — the
@@ -335,7 +335,7 @@ export const opencodeRunner: AgentRunner = {
       const reason = `opencode exited ${exitCode}: ${stderr.trim().slice(-400)}`;
       lastFailures.set(dispatchKey, reason);
       const scan = scanStepFinish(stdout);
-      // Usage-limit classification (docs/specs/usage-limit-backoff/spec.md):
+      // Usage-limit classification (docs/specs/_built/usage-limit-backoff/spec.md):
       // consulted on this non-zero-exit branch ONLY, before the generic
       // throw — a quota wall is a known temporary condition, and the engine
       // waits it out instead of burning retries against it. The session id

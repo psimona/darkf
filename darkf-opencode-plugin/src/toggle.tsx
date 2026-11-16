@@ -13,7 +13,7 @@ function runIdForSession(store: LiveStore, sessionID: string): string | undefine
 
 /** The closed-state half of the toggle — `home_prompt_right`/
  *  `session_prompt_right`, bottom right next to the prompt box (see spec:
- *  docs/specs/opencode-overlay-dialog/spec.md). Opens straight to this
+ *  docs/specs/_built/opencode-overlay-dialog/spec.md). Opens straight to this
  *  session's bound run when it has one, mirroring auto-open; otherwise
  *  behaves like the `darkf.open` command (overlay dialog, `DialogSelect`
  *  if ambiguous). Opening never navigates — see `openOverlay`. */

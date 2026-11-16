@@ -151,9 +151,14 @@ narrow terminals.
   merged" alone.**
 - **tabbed-overlay-views** — blocked by: none (session-binding-loss and
   compact-expanded-sizing both shipped, see Decisions above). Draft spec:
-  `docs/specs/opencode-overlay-tabs/spec.md` — its sizing reference needs
-  updating there: expanded mode is the same tabbed UI in a bigger dialog,
-  not "everything at once without tabs".
+  `docs/specs/opencode-overlay-tabs/spec.md`. Partially superseded on the
+  ground: the `task-list-json` slice already shipped a two-tab strip in
+  `overlay.tsx` (`workflow` default + `tasks`, `TabBar`), so the spec's
+  tab-container ask is met — the ticket's remaining scope is the
+  search-other-sessions tab and the full-journal view (no journal-log
+  renderer exists in the plugin yet). The spec also needs its sizing
+  reference updated: expanded mode is the same tabbed UI in a bigger
+  dialog, not "everything at once without tabs".
 
 ## Not yet specified (fog)
 

@@ -22,18 +22,18 @@ export interface JournalDigest {
      *  don't report one. */
     agentSessionId?: string;
     /** Present while the engine is nudging this attempt (1..3) — see
-     *  `nudgeWarning` and docs/specs/session-nudge/spec.md. */
+     *  `nudgeWarning` and docs/specs/_built/session-nudge/spec.md. */
     nudgeAttempt?: number;
     /** The nudgeable `CrashReason` kind that triggered the current nudge. */
     nudgeReason?: CrashReason["kind"];
     /** Latest agent-reported step count, when the runner reports progress —
-     *  see `agentStallWarning` and docs/specs/agent-liveness/spec.md. */
+     *  see `agentStallWarning` and docs/specs/_built/agent-liveness/spec.md. */
     agentStepCount?: number;
     /** Milliseconds idle as of the last heartbeat — see `agentStallWarning`. */
     agentIdleMs?: number;
     /** Present while the engine is waiting out a provider usage-limit
      *  backoff for the current attempt — see `limitWarning` and
-     *  docs/specs/usage-limit-backoff/spec.md. */
+     *  docs/specs/_built/usage-limit-backoff/spec.md. */
     limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number };
   } | null;
   crash?: { attempt: number; reason: CrashReason };
@@ -120,7 +120,7 @@ export function foldJournal(journalText: string): JournalDigest {
   return digest;
 }
 
-// --- task lists (docs/specs/task-list-json/spec.md) ---
+// --- task lists (docs/specs/_built/task-list-json/spec.md) ---
 
 export interface TaskListDigest {
   /** Strict count: only `done` tasks — pending, in-progress, and failed all
@@ -290,7 +290,7 @@ export function stallWarning(digest: JournalDigest, now: number = Date.now()): s
 }
 
 // Placeholder default, not yet measured against real runs — see
-// docs/specs/agent-liveness/spec.md's open questions (a long tool-execution
+// docs/specs/_built/agent-liveness/spec.md's open questions (a long tool-execution
 // gap, e.g. a 10-minute build, looks identical to a hung provider; the
 // warning's step count is what lets the supervisor tell them apart).
 export const AGENT_STALL_MS = 15 * 60_000;
@@ -327,7 +327,7 @@ export function nudgeWarning(digest: JournalDigest): string | null {
   return `nudging attempt ${nudgeAttempt}/3 (${nudgeReason}) — supervisor decides`;
 }
 
-// Display-only usage-limit config defaults (docs/specs/usage-limit-backoff/
+// Display-only usage-limit config defaults (docs/specs/_built/usage-limit-backoff/
 // spec.md), mirroring how this module already treats other engine constants
 // as display knowledge, not a shared dependency. The denominator assumes the
 // defaults; a leaf overriding usageLimitRetryMs/usageLimitMaxWaitMs renders

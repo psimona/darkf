@@ -18,11 +18,12 @@ to diagnose it without opening opencode's server log.
   the darkf-side subset (workflow-side fixes already landed in the consumer repo:
   cleanup path-scoping in `workspace-pilot/scripts/cleanup.ts`, glm+auto
   model pins committed).
-- Grounded in current code: `darkf-cli/src/agents/opencode.ts` (stdout
-  read-once at line 145, `lastFailures` preamble, 2026-10-09 finish-reason
-  capture), `darkf-cli/src/index.ts` (`startCmd` 250 ms grace check,
-  `stdio: ignore`), `darkf-core/src/types.ts` (`AgentRunner`),
-  `darkf-cli/src/registry.ts`.
+- Grounded in current code (packages consolidated into `darkf/src/` since
+  this map was written: `darkf/src/kit/agents/opencode.ts` — stdout
+  read-once fixed by agent-liveness, `lastFailures` preamble, finish-reason
+  capture; `darkf/src/cli/index.ts` — `startCmd`'s 250 ms grace check and
+  spawn; `darkf/src/core/types.ts` — `AgentRunner`;
+  `darkf/src/kit/registry.ts`).
 - Philosophy constraint carried into every spec: darkf informs, the
   supervisor decides. No spec here auto-kills or auto-restarts.
 
@@ -92,6 +93,19 @@ to diagnose it without opening opencode's server log.
   (`--allow-dirty-workflow` overrides) — `darkf/` is the user/consumer
   repo's versioned workflow config; `.darkf/` is darkf's own
   runtime/run-storage directory, gitignored, never checked for drift.
+- **usage-limit-backoff** — built, archived
+  (`docs/specs/_built/usage-limit-backoff/spec.md`): the runner classifies
+  provider quota rejections into a new `usage-limit` `CrashReason`
+  (marker table in `darkf/src/kit/agents/opencode.ts`), and the engine
+  waits out the quota wall — re-probing at a fixed interval
+  (`usageLimitRetryMs`, default 30 min; `usageLimitMaxWaitMs` cap, 24 h)
+  instead of burning retries, heartbeat rows carrying `limitBackoff`
+  progress (`probe`/`nextAttemptAt`/`waitedMs`) so `status`/`run` render
+  the wait live. Attempt count untouched by the wait; the per-attempt
+  deadline is recomputed after every wait. Reset timestamps in the
+  provider message stay ignored (wrong timezone) — fixed-interval polling
+  is deliberate. Lands the runner-side marker classification that
+  provider-health-gate will reuse.
 
 ## Open tickets
 
@@ -122,12 +136,13 @@ to diagnose it without opening opencode's server log.
   `provider-unhealthy` reason instead of a 31-minute retry burn. Needs a
   design of its own (which endpoint, what cost, cached for how long);
   agent-liveness covers the during-dispatch half only — problem captured,
-  not designed — `docs/specs/provider-health-gate/spec.md`. Scope note
-  (2026-11-01): usage-limit-backoff (approved) covers the *explicit
-  rejection* family — a quota wall now fails fast into a named
-  `usage-limit` reason and waits — and lands the runner-side marker
-  classification the gate will reuse. The *hang* family (accepted
-  connection, no completion, no error) remains this gate's own scope.
+  not designed —   `docs/specs/provider-health-gate/spec.md`. Scope note
+  (2026-11-01, updated on usage-limit-backoff's ship): usage-limit-backoff
+  (built) covers the *explicit rejection* family — a quota wall now fails
+  fast into a named `usage-limit` reason and waits — and landed the
+  runner-side marker classification the gate will reuse. The *hang* family
+  (accepted connection, no completion, no error) remains this gate's own
+  scope.
 
 ## Out of scope
 

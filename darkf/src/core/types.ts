@@ -39,7 +39,7 @@ export const DONE = "[*]" as const;
 // since `[-]` has no built-in meaning to stateDiagram-v2 the way `[*]` does.
 export const FAILED = "[-]" as const;
 // Deprecated alias — kept only for a consumer repo's give-up edges, which still
-// route to EXIT on its own schedule (docs/specs/failed-terminal/spec.md).
+// route to EXIT on its own schedule (docs/specs/_built/failed-terminal/spec.md).
 // Removed in the same change that lands the `run_failure` node + retarget
 // table there; any surviving `EXIT` import then fails to compile.
 export { DONE as EXIT };
@@ -53,7 +53,7 @@ export interface BaseLeafDef {
   retries?: number;
   /** Engine-enforced ceiling on one dispatch attempt. Default 1h. */
   timeoutMs?: number;
-  /** Fixed interval between usage-limit re-probes after a provider quota wall. Default 30 min. See docs/specs/usage-limit-backoff/spec.md. */
+  /** Fixed interval between usage-limit re-probes after a provider quota wall. Default 30 min. See docs/specs/_built/usage-limit-backoff/spec.md. */
   usageLimitRetryMs?: number;
   /** Total wait budget per node visit for usage-limit backoff. At the cap the run crashes with the last usage-limit reason. Default 24h. */
   usageLimitMaxWaitMs?: number;
@@ -150,7 +150,7 @@ export type AgentRunnerKind = "claude-code" | "opencode" | (string & {});
 /**
  * Incremental liveness signal a runner may report via `AgentRunner.run`'s
  * optional `onProgress` callback, throttled to roughly once per 30s —
- * see docs/specs/agent-liveness/spec.md. The engine owns the journal: a
+ * see docs/specs/_built/agent-liveness/spec.md. The engine owns the journal: a
  * runner only ever reports its latest snapshot, never writes anything
  * itself.
  */
@@ -206,7 +206,7 @@ export type NodeStatus =
       agentSessionId?: string;
       /** Latest step count from the agent's own event stream, when the
        *  runner reports progress (`AgentRunner.run`'s optional
-       *  `onProgress`) — see docs/specs/agent-liveness/spec.md. Absent for
+       *  `onProgress`) — see docs/specs/_built/agent-liveness/spec.md. Absent for
        *  script dispatches or runners that don't report progress. */
       agentStepCount?: number;
       /** Milliseconds since the last agent-reported progress event, as of
@@ -216,12 +216,12 @@ export type NodeStatus =
        *  conditions as `agentStepCount`. */
       agentIdleMs?: number;
       /** Set only while the engine is nudging this attempt (1..3) — see
-       *  docs/specs/session-nudge/spec.md. Absent on an ordinary dispatch. */
+       *  docs/specs/_built/session-nudge/spec.md. Absent on an ordinary dispatch. */
       nudgeAttempt?: number;
       /** The nudgeable `CrashReason` kind that triggered this nudge. */
       nudgeReason?: CrashReason["kind"];
       /** Present only while the engine is waiting out a provider usage-limit
-       *  backoff for this attempt — see docs/specs/usage-limit-backoff/spec.md. */
+       *  backoff for this attempt — see docs/specs/_built/usage-limit-backoff/spec.md. */
       limitBackoff?: { probe: number; nextAttemptAt: number; waitedMs: number };
     }
   | { phase: "succeeded"; result: NodeResult }
@@ -249,7 +249,7 @@ export type CrashReason =
  * `Error` can't: the session id to resume, and which `CrashReason` kind this
  * is — so the engine can route the correct nudge template without
  * inspecting the error message string. See
- * docs/specs/session-nudge/spec.md.
+ * docs/specs/_built/session-nudge/spec.md.
  */
 export class AgentFailure extends Error {
   agentSessionId?: string;
@@ -288,7 +288,7 @@ export interface RunResult {
 
 // --- Task lists ---
 //
-// One shared vocabulary for plan/dispatch task lists (docs/specs/task-list-json/spec.md):
+// One shared vocabulary for plan/dispatch task lists (docs/specs/_built/task-list-json/spec.md):
 // workflows write it, `parseTaskList` narrows it, the OpenCode plugin renders it.
 // Lowercase MoSCoW and `satisfies` are the locked names — the validator has no
 // tolerance for the legacy shapes (`moscow`, task-side `requirements`).

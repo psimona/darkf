@@ -1,6 +1,6 @@
 import type { Task, TaskList, TaskPriority, TaskRequirement, TaskStatus } from "./types.ts";
 
-// Hand-written narrowing of unknown JSON to a TaskList (docs/specs/task-list-json/spec.md,
+// Hand-written narrowing of unknown JSON to a TaskList (docs/specs/_built/task-list-json/spec.md,
 // Decisions: Validation) — zero deps, no dual-schema tolerance: the legacy
 // names (`moscow`, task-side `requirements`) are simply not read, and the
 // result is either a TaskList or `{ error }`. The item-loop path and the

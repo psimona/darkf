@@ -744,7 +744,7 @@ function printDigest(entry: RegistryEntry, state: TerminalState, journalText: st
   }
   if (digest.current?.phase === "running" && digest.current.startedAt !== undefined) {
     // Live elapsed, computed at print time — journal-frozen runtime goes stale
-    // during long nodes (spec: docs/specs/live-runtime).
+    // during long nodes (spec: docs/specs/_built/live-runtime).
     console.log(
       `elapsed: ${formatMs(Date.now() - digest.current.startedAt)} (node ${digest.current.state})`,
     );
@@ -813,7 +813,7 @@ function printTransition(e: NodeEvent, prevTs: number | null, isHeartbeat = fals
     const idle = startedAt !== undefined ? e.timestamp - startedAt : 0;
     let line = `${e.state} still running — ${(idle / 1000).toFixed(0)}s elapsed`;
     // Agent-level liveness, distinct from the engine-heartbeat idle above —
-    // see docs/specs/agent-liveness/spec.md. Absent for script dispatches or
+    // see docs/specs/_built/agent-liveness/spec.md. Absent for script dispatches or
     // runners that don't report progress.
     if (status.phase === "running" && status.agentIdleMs !== undefined) {
       const agentIdleSec = Math.round(status.agentIdleMs / 1000);
@@ -916,7 +916,7 @@ async function monitorRun(entry: RegistryEntry, windowSec: number, once: boolean
     lastSeen = events.length;
     dwellHint(events, entry.runId, hinted);
 
-    // Usage-limit wait (docs/specs/usage-limit-backoff/spec.md): re-render
+    // Usage-limit wait (docs/specs/_built/usage-limit-backoff/spec.md): re-render
     // the wait line when the probe advances, so a monitored wait shows the
     // countdown instead of silence — same one-line warn style as the status
     // digest's stallWarning/nudgeWarning.

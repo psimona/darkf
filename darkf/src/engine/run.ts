@@ -29,7 +29,7 @@ import { createJsonlEventLogger } from "./eventLog.ts";
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000; // 1h — high default ceiling, not a tuning knob
 const DEFAULT_MAX_STEPS = 1000;
-// Usage-limit backoff defaults (docs/specs/usage-limit-backoff/spec.md) —
+// Usage-limit backoff defaults (docs/specs/_built/usage-limit-backoff/spec.md) —
 // the leaf-config fields on BaseLeafDef fall back to these. Fixed 30-min
 // probe interval, deliberately not the provider message's quoted reset time
 // (its timezone is not the supervisor's); 24h bounds the total wait per
@@ -37,7 +37,7 @@ const DEFAULT_MAX_STEPS = 1000;
 const DEFAULT_USAGE_LIMIT_RETRY_MS = 30 * 60 * 1000;
 const DEFAULT_USAGE_LIMIT_MAX_WAIT_MS = 24 * 60 * 60 * 1000;
 // Bounded in-session repair attempts per outer attempt (see
-// docs/specs/session-nudge/spec.md) — not a `def.retries`-style tuning
+// docs/specs/_built/session-nudge/spec.md) — not a `def.retries`-style tuning
 // knob, deliberately fixed.
 const NUDGE_LIMIT = 3;
 const NUDGEABLE_KINDS = new Set<CrashReason["kind"]>([
@@ -216,7 +216,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
     let attempt = 0;
     // Usage-limit wait bookkeeping — per node visit, never per attempt:
     // waits consume no retry, so the wait budget spans every attempt of
-    // this visit (docs/specs/usage-limit-backoff/spec.md).
+    // this visit (docs/specs/_built/usage-limit-backoff/spec.md).
     let limitWaitedMs = 0;
     let limitProbes = 0;
 
@@ -224,7 +224,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
       // Fixed once per outer attempt: every dispatch this attempt makes — the
       // first call and up to NUDGE_LIMIT nudges after it — spends down the
       // SAME remaining budget, so a nudge sequence can't multiply the
-      // configured per-attempt timeout (docs/specs/session-nudge/spec.md,
+      // configured per-attempt timeout (docs/specs/_built/session-nudge/spec.md,
       // "Dispatch loop change").
       //
       // Usage-limit exception (same spec family, usage-limit-backoff D-7):
@@ -249,7 +249,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
         const startedAt = Date.now();
         // Reset fresh per dispatch attempt (including each nudge) — a new
         // process gets a new progress snapshot, never carried over from a
-        // previous attempt. See docs/specs/agent-liveness/spec.md.
+        // previous attempt. See docs/specs/_built/agent-liveness/spec.md.
         let latestProgress: AgentProgress | undefined;
         const onProgress = (p: AgentProgress) => {
           latestProgress = p;
@@ -275,7 +275,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
         emit(runningStatus(startedAt), current, scopePath);
         // Live-runtime heartbeats: journal a refreshed `running` status while the
         // dispatch is open, so status/monitor can advance runtime and prove
-        // liveness (spec: darkf-cli/docs/specs/live-runtime). unref'd — a pending
+        // liveness (spec: docs/specs/_built/live-runtime). unref'd — a pending
         // timer must never keep the process alive past the run's own exit.
         const heartbeat =
           heartbeatMs > 0
@@ -334,7 +334,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
             nudgeAttempt++;
             continue;
           }
-          // Usage-limit (docs/specs/usage-limit-backoff/spec.md, Wait and
+          // Usage-limit (docs/specs/_built/usage-limit-backoff/spec.md, Wait and
           // resume): a quota wall is not a failed attempt — it consumes no
           // retry. Sleep usageLimitRetryMs (heartbeating the wait), then
           // re-dispatch this same attempt; the existing

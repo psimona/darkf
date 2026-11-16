@@ -111,7 +111,7 @@ conditionally from the `app` slot, not the imperative
 never touches `api.route.current`), and arguably a closer match to the
 in-repo precedent this Answer's point 2 already cites (`DialogSelect`
 rendered as plain JSX, not pushed through an imperative stack handle) —
-see `docs/specs/opencode-overlay-dialog/spec.md`'s Design overview for the
+see `docs/specs/_built/opencode-overlay-dialog/spec.md`'s Design overview for the
 reasoning and the as-built file list. One consequence found only while
 implementing: `backTarget`/`navigateBack` turned out to be deletable
 outright, not just "ported to a different call site" as guessed above —

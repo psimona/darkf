@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { todayLocal, writeProbeState } from "./setup.ts";
 
 // doctor/validate split, `darkf setup`, and the daily probe — the CLI-level
-// wiring from docs/specs/skill-setup. These spawn the real CLI entrypoint:
+// wiring from docs/specs/_built/skill-setup. These spawn the real CLI entrypoint:
 // a temp HOME (host skill dirs), a temp XDG_STATE_HOME (probe stamp), and a
 // temp cwd keep the suite off the real ~ and off the network.
 

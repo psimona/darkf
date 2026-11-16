@@ -3,7 +3,7 @@ import { claudeCodeRunner } from "@psimona/darkf/src/kit/agents/claude-code.ts";
 
 // A real LLM call, not a stub — the docs site's Quickstart example. One
 // cheap agent dispatch per attempt, so the cost is trivial; see
-// docs/specs/docs-site/spec.md.
+// docs/specs/_built/docs-site/spec.md.
 export const agentRunner = claudeCodeRunner;
 
 export const workflow: WorkflowDef = {

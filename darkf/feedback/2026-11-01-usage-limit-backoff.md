@@ -10,7 +10,7 @@
 
 - The loop ran clean on first attempts: Implement, Check, Review, and Document each succeeded without a rework iteration.
 - Check passed the full gate: secret-scan, typecheck, lint, arch-check, and bun tests with coverage at 96% lines.
-- Review verified the diff field-for-field against docs/specs/usage-limit-backoff/spec.md and approved without findings.
+- Review verified the diff field-for-field against docs/specs/_built/usage-limit-backoff/spec.md and approved without findings.
 - Document updated README and 8 docs-site pages; the astro build succeeded (17 pages).
 - Finish merged cleanly and confirmed in git log (a719a08 at master HEAD).
 

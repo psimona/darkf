@@ -140,7 +140,7 @@ describe("readIncrementally", () => {
   });
 });
 
-// --- usage-limit-backoff (docs/specs/usage-limit-backoff/spec.md) ---
+// --- usage-limit-backoff (docs/specs/_built/usage-limit-backoff/spec.md) ---
 
 describe("matchUsageLimit", () => {
   test("matches the captured usage-limit line, case-insensitively, returning the line itself", () => {

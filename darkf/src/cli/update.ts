@@ -1,4 +1,4 @@
-// CLI self-update (docs/specs/self-update): a daily startup version check and
+// CLI self-update (docs/specs/_built/self-update): a daily startup version check and
 // the `darkf upgrade` command. Every dependency arrives via UpdateDeps, so the
 // whole module runs in tests without network, a real clock, or a real package
 // manager. No module-level mutable state.

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { DispatchInfo } from "../../core/index.ts";
 
 // Shared, harness-agnostic half of the agent-handoff contract. See
-// docs/specs/agent-handoff/spec.md. Per-harness runners own everything else
+// docs/specs/_built/agent-handoff/spec.md. Per-harness runners own everything else
 // (invocation, native structured-output vs. prompt fallback, agentSessionId,
 // subprocess lifecycle).
 
@@ -37,7 +37,7 @@ export async function readHandoff(path: string): Promise<unknown> {
 
 /**
  * Shared same-session repair text for the three nudgeable `CrashReason`
- * kinds (docs/specs/session-nudge/spec.md). `undefined` means "don't
+ * kinds (docs/specs/_built/session-nudge/spec.md). `undefined` means "don't
  * nudge" — either there's no `previousFailure`, no `agentSessionId` to
  * resume, or the failure isn't one of the three repairable kinds. Both
  * runners call this identically; only the CLI invocation that sends the

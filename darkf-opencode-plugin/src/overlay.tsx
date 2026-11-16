@@ -325,7 +325,7 @@ function Picker(props: { api: TuiPluginApi; candidates: PickerEntry[] }): JSX.El
  *  `registerOverlay` below) instead of a registered route — opening it
  *  never changes `api.route.current`, so a run first detected while it's
  *  open still binds to the real session (see spec:
- *  docs/specs/opencode-overlay-dialog/spec.md). `api.mode.push` and the
+ *  docs/specs/_built/opencode-overlay-dialog/spec.md). `api.mode.push` and the
  *  explicit escape binding are kept even though the host `Dialog` may
  *  already close on escape on its own (unconfirmed — see the spec's Open
  *  decisions): redundant-but-harmless beats silently unreachable. */
