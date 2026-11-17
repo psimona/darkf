@@ -7,6 +7,12 @@ per harness. This is a `darkf-cli` concern only: `darkf-core` and
 `darkf-engine` stay unaware this convention exists. Script nodes never need
 it — they're in-process function calls with no subprocess boundary to cross.
 
+**Extended by `docs/specs/output-validation/spec.md`**: `isNodeResult`,
+the envelope check defined below, moves to a Zod-backed implementation
+there. Its name, signature, and behavior stay the same, with one named
+exception — an array now fails the check, where it passed before. See
+"Extending `isNodeResult` to the same pattern" in that spec.
+
 ## The contract
 
 **The handoff file IS a `NodeResult`, verbatim.** Not a separate schema that

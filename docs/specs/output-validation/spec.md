@@ -1,39 +1,39 @@
-# Output validation: a declarative type or a script for a node's `output`, nudgeable on failure
+# Output validation: a type or a script for the `output` of a node, with a nudge on failure
 
-A spec for `darkf-engine`'s dispatch loop (`darkf/src/engine/run.ts`),
-`darkf-core`'s leaf types (`darkf/src/core/types.ts`), and the shared
-nudge-message builder (`darkf/src/kit/agents/handoff.ts`). Out of scope:
-the handoff **envelope** (`{ event, output, agentSessionId }` itself,
-governed by `isNodeResult`/`malformed-result`) — that contract is already
-standardized (`docs/specs/_built/agent-handoff/spec.md`) and untouched
-here. This spec covers validating what rides inside `output` — the
-payload the *next* node actually receives — before a dispatch is accepted
-as `succeeded`.
+This spec covers three files: `darkf/src/engine/run.ts` (the dispatch
+loop), `darkf/src/core/types.ts` (the leaf types), and
+`darkf/src/kit/agents/handoff.ts` (the nudge message builder). It also
+extends `isNodeResult`, the envelope check from
+`docs/specs/_built/agent-handoff/spec.md`, to the same pattern used
+below. `isNodeResult` keeps its behavior: it still runs first, and a
+failure still crashes as `malformed-result`, non-nudgeable. This spec
+covers both checks a dispatch result passes through: the envelope,
+`{ event, output, agentSessionId }`, and the payload inside `output`,
+checked before a dispatch counts as `succeeded`.
 
 ## The problem
 
-`BaseLeafDef` already has a `validate` hook: a plain function run against
-a well-formed `NodeResult`, returning a failure message or `undefined`.
-Two gaps:
+`BaseLeafDef` already has a `validate` hook. It is a plain function. It
+runs against a well-formed `NodeResult`. It returns a failure message,
+or `undefined`. Two gaps remain:
 
-1. It's the only option. A node that wants its `output`'s shape checked —
-   "this must be an object with a string `summary` and an array of
-   `Task`" — has to hand-write that as imperative code, every time, even
-   though it's a declarative, generic check with no business logic in it.
-2. Its failure (`CrashReason` kind `validation-failed`) is not in
-   `NUDGEABLE_KINDS` (`darkf/src/engine/run.ts:43-47`). Today it falls
-   straight to `continue attemptLoop` (`run.ts:311-315`) — a full fresh-
-   session retry, discarding everything the agent already did, for
-   something the agent is often one short correction away from fixing in
-   the same session. This is exactly the gap `session-nudge`
-   (`docs/specs/_built/session-nudge/spec.md`) left open: its three
-   nudgeable kinds are all envelope-level (`handoff-missing`,
-   `handoff-unparseable`, `no-transition`); content-level validation
-   failure was explicitly not one of them.
+1. `validate` is the only option. A node that wants to check the shape
+   of its `output` must write that check as code, every time. This is a
+   shape check, not business logic. It should not need custom code.
+2. A `validate` failure does not nudge. Its `CrashReason` kind,
+   `validation-failed`, is not in `NUDGEABLE_KINDS`
+   (`darkf/src/engine/run.ts:43-47`). The dispatch loop sends it
+   straight to `continue attemptLoop` (`run.ts:311-315`). This starts a
+   new session and discards work the agent already did, even when one short
+   correction would fix it in the same session. `session-nudge`
+   (`docs/specs/_built/session-nudge/spec.md`) left this gap open on
+   purpose: its three nudgeable kinds all check the envelope
+   (`handoff-missing`, `handoff-unparseable`, `no-transition`). None of
+   them check content.
 
 ## Design
 
-### `outputType` on `AgentStateDef`, `validate` unchanged on `BaseLeafDef`
+### `outputType` on `AgentStateDef`
 
 ```typescript
 // darkf/src/core/types.ts
@@ -41,60 +41,123 @@ export interface AgentStateDef extends BaseLeafDef {
   type: "agent";
   prompt: string;
   agent?: Record<string, unknown>;
-
-  /** Generic structural check of result.output, run before `validate`.
-   *  No author code — the engine walks the descriptor itself. Agent
-   *  leaves only: a script leaf's output is already author-controlled
-   *  code, not an LLM reply, so there's nothing for a declarative type
-   *  check to catch that the script author didn't already guarantee. */
-  outputType?: OutputType;
+  outputType?: OutputSchema; // checks result.output, before `validate` runs
 }
 
-export type OutputType =
-  | { kind: "string" }
-  | { kind: "number" }
-  | { kind: "boolean" }
-  | { kind: "enum"; values: readonly (string | number)[] }
-  | { kind: "array"; items: OutputType }
-  | { kind: "object"; properties: Record<string, OutputType>; required?: string[] };
+export interface OutputSchema {
+  safeParse(value: unknown): { success: true } | { success: false; message: string };
+}
 ```
 
-`outputType` is the declarative "type" option, scoped to agent leaves —
-the motivating case, and the only leaf kind whose `output` comes from
-text an LLM produced rather than code the workflow author already wrote
-and controls. `validate` (unchanged signature, unchanged location on
-`BaseLeafDef`) remains the "validation script" option, still shared
-between agent and script leaves exactly as it is today. Both are
-optional and independent; a given agent leaf may set either, both, or
-neither — see Order below for what happens when both are set.
+`outputType` only applies to agent leaves. The `output` of an agent
+leaf comes from text an LLM wrote. The `output` of a script leaf comes
+from code the workflow author already wrote and controls. `validate`
+keeps its current signature and location on `BaseLeafDef`. It stays
+available on
+both agent and script leaves. A leaf may set `outputType`, `validate`,
+both, or neither. See "Order" below for what happens when a leaf sets
+both.
 
-### The checker
+`OutputSchema` is narrow on purpose. Zod, Valibot, and a hand-written
+object can all implement `.safeParse()` in a few lines. darkf-core
+never imports a schema library in its own code. Its public types never
+depend on one either.
+
+### Zod as a dependency, `OutputSchema` as the public type
+
+`darkf/package.json` now lists Zod as a real dependency. This is the
+first runtime dependency for darkf-core. Shape validation for an
+arbitrary type is not a simple problem, so a dependency is the right
+tool here. Zod holds an established, popular place in this space, with
+no extra dependencies of its own.
+
+The `outputType` field still stays typed as `OutputSchema`, not
+`z.ZodType`. A field typed `z.ZodType` would tie the public type of
+`AgentStateDef` to one Zod version. A consumer repo on a different Zod
+major version would hit real type errors, even in a workflow that never
+sets `outputType`. `OutputSchema` avoids this. For `outputType` and
+`validate`, the engine and dispatch-loop code of darkf-core never
+imports Zod directly. Only the adapter below does. (One later
+exception, scoped narrowly: see "Extending `isNodeResult` to the same
+pattern.")
+
+### The Zod adapter
 
 ```typescript
-// darkf/src/core/outputType.ts (new)
-export function checkOutputType(value: unknown, type: OutputType, path = "output"): string | undefined
+// darkf/src/kit/validation/zod.ts
+import type { z } from "zod";
+import type { OutputSchema } from "../../core/index.ts";
+
+export function zodOutputType<T>(schema: z.ZodType<T>): OutputSchema {
+  return {
+    safeParse: (value) => {
+      const result = schema.safeParse(value);
+      if (result.success) return { success: true };
+      const message = result.error.issues
+        .map((issue) => `${issue.path.join(".") || "output"}: ${issue.message}`)
+        .join("; ");
+      return { success: false, message };
+    },
+  };
+}
 ```
 
-Fail-fast: returns the *first* mismatch as one descriptive message (e.g.
-`output.tasks[2].title: expected string, got number`), not a collected
-list — this matches `validate`'s own single-message return shape, and
-keeps a nudge prompt short. No JSON-Schema import, no new dependency:
-`OutputType` is a small hand-rolled subset, walked by plain recursive
-code, consistent with `validate` already being "plain code" by design
-(see its doc comment in `types.ts:60-65`).
+The adapter joins every `safeParse` issue into one message, not just
+the first. `error.issues` already holds every failure from one parse
+call, so nothing about the engine or the nudge message needs to stop at
+the first. This matters for a schema with several independently
+failing fields: one nudge round can now name all of them, instead of
+fixing one field per nudge and never converging within the three-nudge
+cap.
+
+A Valibot or ArkType adapter follows the same shape. darkf ships the
+Zod version because Zod is already the common schema vocabulary for LLM
+tool calls.
+
+### Schema-first authoring
+
+A workflow author writes the schema once, in its own file. `z.infer`
+derives the TypeScript type from it:
+
+```typescript
+// workflows/dev-loop/schemas/plan-output.ts
+import { z } from "zod";
+import { zodOutputType } from "@psimona/darkf/src/kit/validation/zod.ts";
+
+const PlanOutputSchema = z.object({
+  summary: z.string(),
+  tasks: z.array(z.object({ id: z.string(), title: z.string() })),
+});
+
+export type PlanOutput = z.infer<typeof PlanOutputSchema>;
+export const planOutputType = zodOutputType(PlanOutputSchema);
+```
+
+The workflow definition imports only `planOutputType`:
+
+```typescript
+// workflows/dev-loop/workflow.ts
+import { planOutputType } from "./schemas/plan-output.ts";
+// ...
+Plan: { type: "agent", prompt: PLAN_PROMPT, outputType: planOutputType, on: { planned: "ValidatePlan" } },
+```
+
+`workflow.ts` never imports Zod. It stays what PHILOSOPHY.md already
+calls it: a plain TypeScript object, the single place that defines the
+structure of the graph.
 
 ### Where this plugs into the dispatch loop
 
-`darkf/src/engine/run.ts`, right where `validate` already runs today
-(after the bare-payload coercion, `run.ts:308-315`):
+`darkf/src/engine/run.ts` runs this check where `validate` already runs
+today, after the bare-payload coercion (`run.ts:308-315`):
 
 ```typescript
-const typeError =
+const typeResult =
   def.type === "agent" && def.outputType
-    ? checkOutputType(result_.output, def.outputType)
+    ? def.outputType.safeParse(result_.output)
     : undefined;
-if (typeError !== undefined) {
-  reason = { kind: "validation-failed", message: typeError };
+if (typeResult && !typeResult.success) {
+  reason = { kind: "validation-failed", message: typeResult.message };
   if (agentSessionId && nudgeAttempt < NUDGE_LIMIT) {
     nudgeAttempt++;
     continue;
@@ -112,29 +175,24 @@ if (validationError !== undefined) {
 }
 ```
 
-No new `CrashReason` kind. Both checks report through the existing
-`{ kind: "validation-failed", message }` — the nudge template (below)
-doesn't need to know which check produced the message, only what it
-says. The inline nudge-eligibility check (`if (agentSessionId &&
-nudgeAttempt < NUDGE_LIMIT) ...`) is copied verbatim from the pattern
-`no-transition` already uses one branch below it (`run.ts:316-324`) —
-`validation-failed` is a return-value check, not a thrown `AgentFailure`,
-so it needs this inline form rather than going through the catch
-block's `isNudgeable(reason)` path that `handoff-missing` /
-`handoff-unparseable` / `runner-error` use.
+This adds no new `CrashReason` kind. Both checks report through the
+existing `{ kind: "validation-failed", message }` shape. The
+nudge-eligibility check copies the pattern `no-transition` already uses
+one branch below it (`run.ts:316-324`). `validation-failed` comes from
+a return value, not a thrown `AgentFailure`. It needs this inline form.
+It cannot use the `isNudgeable(reason)` path inside the `catch` block,
+since that path only runs for `handoff-missing`, `handoff-unparseable`,
+and `runner-error`.
 
 ### Order: type before script
 
-Both checks run, in sequence, whenever both are configured on the same
-agent leaf: `outputType` first, `validate` second. This mirrors the
-precedent already set one layer up — envelope shape (`isNodeResult`)
-always runs before any content check reaches it at all — by applying the
-same "structure first" rule one level deeper, to the payload inside
-`output`. It also protects `validate` authors: a script that assumes
-`output.tasks[2].title` exists can safely destructure it once
-`outputType` has already guaranteed the shape, instead of every script
-needing its own defensive optional-chaining against malformed input.
-Confirmed in review (2026-11-17): type-then-script, as drafted.
+A leaf that sets both checks runs `outputType` first, then `validate`.
+This matches the rule one level up: `isNodeResult` always checks the
+envelope before any content check runs. It also helps `validate`
+authors. A script can read `output.tasks[2].title` directly, once
+`outputType` already confirmed that shape exists. It does not need its
+own defensive checks against bad input. Confirmed in review
+(2026-11-17): type before script, as drafted.
 
 ### `NUDGEABLE_KINDS`
 
@@ -148,109 +206,181 @@ const NUDGEABLE_KINDS = new Set<CrashReason["kind"]>([
 ]);
 ```
 
-This is the one-line change that makes `validate`'s existing rejections
-nudgeable too, not only `outputType`'s — see Compatibility.
+This entry records `validation-failed` as a nudgeable kind, for
+accuracy. The dispatch loop reads `NUDGEABLE_KINDS` in one place only:
+the `catch` block at `run.ts:345`, for a thrown `AgentFailure`. The
+`no-transition` entry works the same way. Its own branch never reads
+the Set either. The real change in behavior comes from the inline
+nudge check shown above, added directly to both branches. See
+Compatibility.
 
 ### Nudge message
 
-`darkf/src/kit/agents/handoff.ts`, `nudgeMessage()` gains a fourth case,
-alongside the existing three:
+`nudgeMessage()` in `darkf/src/kit/agents/handoff.ts` gains a fourth
+case:
 
 ```typescript
 case "validation-failed":
   return `Your output failed validation: ${failure.message}\n\nRewrite the handoff's "output" field to fix this and write it again to ${path}.`;
 ```
 
-Nothing else changes: `nudgeMessage()` is already called unconditionally
-by both runners (`opencode.ts:219`, `claude-code.ts:111`) purely off
-`info.previousFailure`/`info.agentSessionId` — adding a case here is the
-entire adapter-side change, no new per-runner plumbing (unlike
-`session-nudge`'s own adapter work, which needed new session-id capture;
-that capture already exists and is reused as-is).
+Both runners already call `nudgeMessage()` on every dispatch
+(`opencode.ts:219`, `claude-code.ts:111`). This case is the only change
+needed. `failure.message` carries whichever text caused the rejection,
+type check or script, straight into the corrective prompt.
 
-This is the literal mechanism behind "nudge the previous session with the
-output of the type validation (generic) or the output of the validation
-script" — `failure.message` is whichever text produced the rejection,
-quoted straight into the corrective prompt.
+Every nudge dispatch already gets journaled, with no change needed
+here. `nudgeAttempt` and `nudgeReason` ride on the `running` status
+`emit()` writes at the start of each dispatch and on every heartbeat
+(`run.ts:238`, `run.ts:272`, `run.ts:122-126`). `emit()` writes every
+status to `journal.jsonl` unconditionally. A `validation-failed` nudge
+reuses this same path: nothing new to wire up, since it shares the
+`nudgeAttempt` counter and the inner dispatch loop with the three
+nudgeable kinds already shipped.
+
+### Extending `isNodeResult` to the same pattern
+
+`isNodeResult` (`darkf/src/core/types.ts:21-32`) checks the envelope:
+an object, with `event` and `agentSessionId` as strings when present.
+It runs before any check this spec adds (see "Order" above, one level
+up from the content check). Now that Zod is a real dependency, it
+moves to the same pattern:
+
+```typescript
+// darkf/src/core/types.ts
+const NodeResultSchema = z.object({
+  event: z.string().optional(),
+  output: z.unknown().optional(),
+  agentSessionId: z.string().optional(),
+});
+
+export function isNodeResult(value: unknown): value is NodeResult {
+  return NodeResultSchema.safeParse(value).success;
+}
+```
+
+No `.strict()`: an object with extra fields still passes, the same as
+today. The function keeps its name, its signature, and its place in
+the dispatch loop. A failure still crashes as `malformed-result`, still
+outside `NUDGEABLE_KINDS`, exactly as
+`docs/specs/_built/agent-handoff/spec.md` already defines it. This is
+an implementation change only, with one real behavior change worth a
+test: `z.object()` rejects an array, where the hand-rolled check did
+not. An array has no own `event` or `agentSessionId` property, so both
+guard clauses skipped it, and it passed. `NodeResult` was never meant
+to be an array, so this closes a latent gap rather than opening one.
+
+`docs/specs/_built/agent-handoff/spec.md` gets a short note pointing
+here, to record that this spec extends its envelope check to the
+shared pattern.
+
+This one exception means the code of darkf-core is not fully free of
+Zod after all: `isNodeResult` imports it directly, for a fixed check
+with no workflow-author configuration. The decoupling claim earlier in
+this spec still holds where it matters: no public field type
+(`AgentStateDef.outputType`, `BaseLeafDef.validate`) ever references a
+Zod type, so the Zod version a consumer uses on its own never conflicts
+with the types of darkf-core.
 
 ## Compatibility
 
-Adding `"validation-failed"` to `NUDGEABLE_KINDS` changes behavior for
-**every** workflow already using `validate` today, not just new
-`outputType` adopters, and does so with no opt-in and no opt-out.
+The inline nudge check changes behavior for every workflow that already
+uses `validate`, not only new `outputType` adopters. It ships with no
+opt-in and no opt-out.
 
-- **Before:** `validate` rejects → one `def.retries` slot spent → next
-  attempt is a fresh session, full original prompt replayed.
-- **After:** `validate` rejects → up to 3 same-session nudges (a short
-  corrective message into the already-primed session) → only once all 3
-  are exhausted does it fall through to the fresh-session retry, exactly
-  as before.
+- **Before:** a `validate` failure spends one `def.retries` attempt. The
+  next attempt starts a fresh session and replays the full prompt.
+- **After:** a `validate` failure sends up to three same-session nudges
+  first. Each nudge is a short message, not a replayed prompt. Only
+  after all three fail does the loop fall back to a fresh attempt, as
+  before.
 
-This is not strictly an improvement, only usually one:
+This change is usually an improvement, not always one:
 
-- **More dispatches per failure, not fewer.** `def.retries` counts outer
-  attempts only — nudges are free and uncounted (by design, same as the
-  other 3 nudgeable kinds). A leaf with `retries: 1` (2 fresh attempts
-  today) can now cost up to 8 total dispatch calls per visit (2 attempts
-  × up to 4 calls each: 1 initial + 3 nudges). Each nudge is normally
-  cheaper and faster than a fresh retry (short message, no replayed
-  prompt/context), but a sequence that nudges 3 times and still fails
-  adds that latency *on top of* the eventual retry, not instead of it.
-  Anyone who tuned `retries` assuming "N retries = N dispatch calls" now
-  gets a different, larger bound.
-- **No per-leaf escape hatch.** `retries`, `timeoutMs`, and
-  `usageLimitRetryMs` are all leaf-tunable. Nudgeability isn't — there is
-  no field to disable it for a leaf where a `validate` failure is a
-  signal the session already went down a wrong path, and a clean fresh
-  start would repair better than continuing it. This mirrors the other 3
-  nudgeable kinds, none of which have an opt-out either, but it is a
-  deliberate limitation, not an oversight.
-- **The blast radius is invisible from inside this repo.** Nothing here
-  uses `validate` in a real workflow today — only `run.test.ts` exercises
-  it, as test fixtures (verified by grep across the monorepo). But
-  `validate` is a public `darkf-core` field; any consumer repo that
-  already wrote a workflow using it gets this behavior change
-  automatically on its next `darkf` upgrade, with no signal that anything
-  changed.
+- **More dispatches per failure.** `def.retries` only counts fresh
+  attempts. Nudges do not count against it, the same as the other three
+  nudgeable kinds. A leaf with `retries: 1` could now cost up to eight
+  dispatch calls per visit, instead of two. Each nudge costs less than
+  a fresh retry, but three failed nudges still add that time on top of
+  the eventual retry.
+- **No per-leaf opt-out.** `retries`, `timeoutMs`, and
+  `usageLimitRetryMs` all have leaf-level settings. Nudging does not. A
+  leaf cannot turn it off, even where a `validate` failure signals a
+  session gone wrong, better served by a fresh start. The other three
+  nudgeable kinds share this limit by design.
+- **The effect stays hidden inside this repo.** No shipped workflow
+  here uses `validate` today. Only `run.test.ts` does, as a test
+  fixture. But `validate` is a public field on `darkf-core`. A consumer
+  repo already using it gets this new behavior on its next `darkf`
+  upgrade, with no warning.
 
 Confirmed in review (2026-11-17): ship with no opt-out, matching the
-existing three nudgeable kinds. The failure mode this leaves on the table
-— nudge up to 3 times, still fail, retry anyway — is never worse than
-today's behavior, only sometimes slower.
+other three nudgeable kinds. The worst case, three failed nudges before
+a retry, is never worse than today. It only takes longer.
 
 ## Non-goals
 
-- No JSON-Schema import/export, no schema-library dependency — `OutputType`
-  is intentionally a small closed set, not an escape hatch to arbitrary
-  schemas.
-- No multi-error collection — first mismatch only.
-- No change to envelope-shape handling — `malformed-result` stays exactly
-  as non-nudgeable as it is today; this spec only ever runs after a
-  dispatch has already produced a well-formed `NodeResult`.
-- No schema for `event` or `agentSessionId` — only `output`'s payload is
-  ever checked.
-- No cap on nudge-message length — a deep nested-path type error or a
-  verbose `validate` message rides the corrective prompt as-is.
+- The public type of `AgentStateDef` never references the type of Zod,
+  even though Zod is now a dependency. `OutputSchema` stays the field
+  type. No *configurable* check (`outputType`, `validate`) ever imports
+  Zod directly in the code of darkf-core. Only `kit/validation/zod.ts`
+  does. The one exception is the fixed, non-configurable envelope check
+  in `isNodeResult` (see "Extending `isNodeResult` to the same
+  pattern").
+- darkf ships one adapter, for Zod. A Valibot or ArkType adapter
+  follows the same pattern. A consumer writes their own.
+- Only `validate` carries the one-message limit. Its signature returns
+  a single string, unchanged by this spec. `outputType`'s Zod adapter
+  joins every `safeParse` issue into that one message instead of
+  stopping at the first.
+- No behavior change to envelope checks beyond the one named case (an
+  array now fails `isNodeResult`, where it passed before).
+  `malformed-result` stays non-nudgeable. This spec only runs its new
+  content checks after a dispatch already returns a well-formed
+  `NodeResult`.
+- No check on `event` or `agentSessionId`. Only the payload of `output`
+  gets checked.
+- No cap on nudge-message length. A long error message, now possibly
+  several joined issues, rides into the corrective prompt as written.
 
 ## Testing
 
-- `checkOutputType`: each `kind`, nested object/array, a missing
-  `required` field, a wrong primitive, an enum mismatch — one descriptive
-  message per case, first-mismatch-wins when more than one field is wrong.
-- Engine: a stub agent runner returning a bad-shaped `output` with a
-  session id attached — assert a nudge fires, the nudge message quotes
-  the generic type-check message, and the nudge count caps at 3 before
-  falling to a real retry. Same scenario for a `validate`-rejected output,
-  asserting the nudge quotes the script's own message instead.
-- Regression: an existing workflow that already sets `validate` and no
-  `outputType` — unaffected in shape (still rejects the same inputs), but
-  its rejection path now nudges before retrying (see Compatibility) —
-  assert this explicitly so it isn't an accidental side effect no test
-  pins down.
+- `zodOutputType()`: a passing schema returns `{ success: true }`, with
+  no `message` field. A failing schema with one bad field returns one
+  issue, its path joined by dots, for example `tasks[2].title: ...`. A
+  root-level failure, with no path, falls back to the word `output`. A
+  schema with two or more failing fields returns every issue, joined
+  together, not just the first.
+- Engine: dispatch a leaf with a stub `OutputSchema` that returns
+  `{ success: false, message }`, with a session ID attached. Check that
+  a nudge fires, that it quotes the message, and that the nudge count
+  stops at three before a real retry. Repeat for a `validate` failure,
+  and check the nudge quotes the message from the script instead.
+- Regression: a workflow that sets `validate` and no `outputType` still
+  rejects the same inputs as before. Its rejection now nudges before it
+  retries. Write a test that checks this directly, so it never slips in
+  as an untested side effect.
+- `isNodeResult`: the same accept and reject cases as today, an object
+  with typed `event` and `agentSessionId`, extra fields allowed, `null`
+  rejected, plus the one new case: an array now returns `false`, where
+  it returned `true` before.
 
-## Open questions
+## Skill and doc updates
 
-None. All three raised in review (2026-11-17) are resolved: type-then-
-script order confirmed (Order), `outputType` scoped to `AgentStateDef`
-only (Design), no opt-out for the `validation-failed` nudge confirmed
-(Compatibility).
+- `darkf/skills/darkf-writing-workflows/SKILL.md`: add a short section
+  on `outputType`. Cover the `OutputSchema` interface, the shipped Zod
+  adapter, and the schema-first pattern, a schema in its own file, the
+  workflow definition importing only the built `OutputSchema` value,
+  never Zod directly.
+- `darkf/docs/concepts/node-types.md`: add `outputType` to
+  `AgentStateDef`'s TypeScript block and its fields table, next to
+  `validate`.
+- `darkf/docs/reference/core-types.md`: same two additions, to its own
+  copy of the `AgentStateDef` block. This page already carries drift
+  unrelated to this spec, `sessionId` instead of `agentSessionId`,
+  `EXIT` instead of `DONE`. Add `outputType` without fixing that drift.
+  It belongs to a separate pass.
+- `darkf/docs/concepts/failure-modes.md`: update the `validation-failed`
+  row to name `outputType` as a second source, alongside `validate`.
+  Add a line stating this kind now nudges, up to three times in the
+  same session, before it falls back to a fresh attempt.
