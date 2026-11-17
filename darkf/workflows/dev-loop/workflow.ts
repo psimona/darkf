@@ -1,15 +1,15 @@
 import { DONE, type WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 
-// dev-loop — begin → implement → check → review → document → finish(squash) →
-// feedback.
+// dev-loop — begin → PlanPhase{plan → validate} → BuildPhase{dispatch →
+// implement → test → [fix → test]* → review → mark done}* → document →
+// finish(squash) → feedback.
 //
 // The darkf-on-darkf pilot, expanded after its first real run built the CLI
 // self-update feature (docs/specs/_built/self-update/). Shape ported from
-// blueprint's build-backend: Begin cuts the feature branch, the composite
-// bounds the implement/fix/review cycle, Finish squash-merges onto master
-// with blueprint's rails, Feedback writes the run retrospective under
-// darkf/feedback/.
+// blueprint's build-backend: Begin cuts the feature branch, Finish
+// squash-merges onto master with blueprint's rails, Feedback writes the run
+// retrospective under darkf/feedback/.
 //
 // Run from the target repo root with the released engine from the npm
 // registry (never the workspace symlink — doctor's selfRoot guard fails
@@ -23,17 +23,57 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 //   darkf start darkf/workflows/dev-loop "message" --allow-dirty-workflow
 //
 // Editing the FEATURE / RUN_DATE constants at the top of the begin/finish
-// scripts and this file's agent prompts is the per-feature contract until
-// engine-side input plumbing exists. Resume is the fresh-run semantics: a
-// second run on an already-implemented tree verifies and ships it (see the
-// Implement prompt). No other git automation: the human curates what the
-// workflow leaves behind (spec archive, roadmap entry, feedback note).
+// scripts and this file is the per-feature contract until engine-side input
+// plumbing exists — but the agent prompts below are feature-agnostic, so
+// that's the only edit a new dispatch needs. Resume is the fresh-run
+// semantics: a second run on an already-implemented tree verifies and ships
+// it. No other git automation: the human curates what the workflow leaves
+// behind (spec archive, roadmap entry, feedback note).
 //
-// The implementer, fixer, reviewer, and documenter are separate dispatches.
-// Their only
-// shared channels are the repo itself (files, git diff, the spec docs) and
-// the one-hop handoff — matching PHILOSOPHY.md: nothing rides along for
-// free.
+// Two composites, not one, because they bound two unrelated kinds of
+// backward routing (Bounded loops rule, darkf-writing-workflows) and need
+// very different maxCycles budgets:
+//
+// - PlanPhase: Plan (an agent — distilling free-form spec prose into a
+//   task list takes judgment, not parsing) emits a candidate TaskList in
+//   its output, reusing darkf-core's existing shared vocabulary
+//   (docs/specs/_built/task-list-json/spec.md) rather than a one-off
+//   shape. ValidatePlan (a script) runs parseTaskList on it and, once
+//   valid, persists it at the canonical .darkf/run/<runId>/tasks.json — a
+//   script gets info.rootDir/info.runId to compute that path; a static
+//   agent prompt cannot interpolate a per-dispatch runId, only a
+//   compile-time constant like FEATURE. An invalid candidate loops back to
+//   Plan; budget is a small, fixed number of retry rounds.
+//
+// - BuildPhase is darkf's item-loop-convention shape
+//   (docs/specs/item-loop-convention/spec.md — a design, not shipped code
+//   yet, so Dispatch below hand-rolls its algorithm rather than importing
+//   it): Dispatch (a script) is the node that actually walks the plan — it
+//   picks the first "pending" task out of tasks.json, flips it
+//   "in-progress", and hands it to Implement as the one thing to build
+//   this pass. Implement → Test → (Fix → Test)* run on that one task.
+//   Review (an agent, reads tasks.json itself to find the in-progress
+//   task — it never receives it via handoff, which is several hops away
+//   by the time Review runs) verifies the task's claim against the actual
+//   working tree and never edits anything; MarkDone (a script) does the
+//   one mechanical write that follows an approval, then loops back to
+//   Dispatch for the next task. Budget scales with the plan's expected
+//   task count (see the comment on BuildPhase below), which
+//   item-loop-convention's own design explicitly leaves to the workflow
+//   author — WorkflowDef is static, built before the real item count is
+//   known.
+//
+// Every node's only shared channels are the repo itself (files, git diff,
+// the spec docs, the run's tasks.json) and the one-hop handoff — matching
+// PHILOSOPHY.md: nothing rides along for free. A node several hops past
+// whoever produced something it needs (Review past Dispatch; Document past
+// everything) rediscovers it from disk — "the task with status
+// in-progress," "the directory under .darkf/run/ with the latest mtime" —
+// never by a value hand-threaded through every intervening node's output.
+// See darkf-writing-workflows's "Keep prompts feature-agnostic". The same
+// tasks.json also feeds the OpenCode plugin's live "tasks nn/mm" tab for
+// free, since MarkDone flips a task's status the moment its claim is
+// actually verified, not merely claimed.
 
 export const agentRunner = opencodeRunner;
 
@@ -48,43 +88,78 @@ export const workflow: WorkflowDef = {
       type: "script",
       file: "begin.ts",
       retries: 1,
-      on: { started: "Loop", branch_failed: DONE },
+      on: { started: "Plan", branch_failed: DONE },
     },
-    Loop: {
-      initial: "Implement",
-      // The normal path is one cycle (Implement → Check → Review → Document
-      // → Finish). Each Fix → Check re-entry costs another. 8 leaves room
-      // for two fix rounds including the terminal Document dispatch before
-      // the engine calls the run stuck.
-      maxCycles: 8,
+    PlanPhase: {
+      initial: "Plan",
+      // Two dispatches per round (Plan, ValidatePlan); budget three full
+      // retry rounds. Unrelated to BuildPhase's budget — see the top
+      // comment on why these are two composites, not one.
+      maxCycles: 6,
       states: {
+        Plan: {
+          type: "agent",
+          agent: { model: MODEL },
+          retries: 1,
+          prompt: `You are planning the ${FEATURE} run. Do not write or modify any code.
+
+Read docs/specs/${FEATURE}/. It holds the contract as either a single spec.md, or a split prd.md (requirements) + design.md (implementation) pair — read whichever is present.
+
+Distill the contract into one TaskList JSON object (shape: id, optional spec: { prd?, design? }, requirements?: TaskRequirement[], tasks: Task[] — TaskRequirement is { id, kind: "req"|"nfr"|"ng", text, priority? }; Task is { id, title, status, satisfies?, priority? }; priority is one of "must"|"should"|"could"|"won't"; status starts "pending" for every task):
+
+- requirements: one entry per concrete requirement, NFR, or non-goal in the contract, kind "req"/"nfr"/"ng" accordingly, text stated the way the contract states it — don't paraphrase, don't add anything beyond it.
+- tasks: one entry per concrete file to create or change and concrete behavior to add that the contract calls for. Each task's satisfies lists the requirement ids it implements. id is a short kebab-case slug; title is one line.
+
+Put this object directly in your output — do not write any file yourself; the next step persists and validates it.
+
+Finish with event "planned". If the contract is missing, contradictory, or too vague to distill a concrete task list from, finish with event "blocked" and the reason.`,
+          on: { planned: "ValidatePlan", blocked: DONE },
+        },
+        ValidatePlan: {
+          type: "script",
+          file: "validate-plan.ts",
+          retries: 1,
+          on: { valid: "Dispatch", invalid: "Plan" },
+        },
+      },
+    },
+    BuildPhase: {
+      initial: "Dispatch",
+      // Dispatch re-enters this composite once per task — the whole
+      // per-task loop is one continuous pass through BuildPhase, so this
+      // one budget covers the entire plan, not one task. Sized for up to
+      // 8 tasks at up to 9 dispatches each in the worst case (Dispatch +
+      // Implement + Test + 2 Fix/Test rounds + Review + MarkDone):
+      // 8 * 9 = 72. A plan with more tasks than that needs a bigger
+      // number — item-loop-convention leaves this to the workflow author
+      // on purpose, since WorkflowDef is static and the real task count
+      // isn't known until Plan runs.
+      maxCycles: 72,
+      states: {
+        Dispatch: {
+          type: "script",
+          file: "dispatch.ts",
+          retries: 1,
+          on: { next_item: "Implement", plan_exhausted: "Document", blocked: DONE },
+        },
         Implement: {
           type: "agent",
           agent: { model: MODEL },
           retries: 1,
-          prompt: `Implement the ${FEATURE} feature in this repository.
+          prompt: `Implement exactly the one task you were handed for the ${FEATURE} feature — see "Input from the previous step" below for its id, title, and which requirements it satisfies. Nothing else.
 
-First read docs/specs/${FEATURE}/spec.md. It is the contract: its Decisions and Non-goals sections are locked — implement exactly what they specify, nothing more. The spec is the only contract artifact; no design.md exists for this feature.
+First read docs/specs/${FEATURE}/. It holds the contract as either a single spec.md, or a split prd.md (requirements) + design.md (implementation) pair — read whichever is present. Use it to understand what the handed-off task actually requires; its locked decisions and explicit non-goals bound the work.
 
-Resume semantics: if the working tree already implements part of the spec, verify that part instead of re-implementing. The bundled skills already exist and are final content — darkf/skills/darkf-usage/SKILL.md and darkf/skills/darkf-writing-workflows/SKILL.md. Do not rewrite them. Wire them into setup, doctor, packaging, and the docs move as the spec specifies.
+Resume semantics: if the working tree already implements this task, verify it instead of re-implementing.
 
-Deliverables (when not already present):
-- darkf/src/cli/setup.ts (new): \`darkf setup\` — sync both bundled skills into every detected host's skills dir. Hosts are a table in code per the spec: claude code (~/.claude/skills, binary claude), opencode (~/.opencode/skills, opencode), codex cli (~/.codex/skills, codex), gemini cli (~/.gemini/skills, gemini), cursor (~/.cursor/skills, cursor-agent); a host is detected when its skills dir exists OR its binary is on PATH. Write policy: darkf-* is darkf's namespace — copy when missing; when present, replace the whole dir (copy bundled to a dot-prefixed temp dir inside the skills dir, remove the installed dir, rename into place) so the destination is an exact mirror. States missing/ok/differs per skill. Output: one host-detection line, then one line per host per skill. Creates a missing skills dir (mode 0755) for a detected host; skips an undetected host without creating anything. Exits non-zero when a present host still ends missing/differs after the sync attempt. Takes no flags and no positional args; never prompts.
-- \`darkf upgrade\` (darkf/src/cli/update.ts) runs the same sync after self-update, under a "skills:" header, best-effort: a sync failure is reported and exits non-zero but never masks the upgrade itself.
-- doctor/validate split in darkf/src/cli/index.ts: \`darkf doctor\` with no ref checks the environment only — agent binaries, cwd sanity, skills section. \`darkf validate <ref>\` inherits the workflow checks doctor has today (resolves, loads, exports, structure), unchanged lines and exit codes. Back-compat: \`darkf doctor <ref>\` prints the new usage and exits 1. The skills section names every known harness: per skill ok/missing/differs for a present harness, \`harness not present\` for an absent one; it writes nothing and exits non-zero only for missing/differs on a present harness, with \`run darkf setup\` as the fix hint. All three (doctor skills section, validate checks, setup sync) share one skills-check function. Fix doctor's stale runner hint while there: "built-ins live in src/agents/" — the real location is src/kit/agents/.
-- Daily probe: once per calendar day, the first darkf invocation after the update gate runs a skills-only check via the same shared function. State file per the spec (XDG state semantics like updateStateFile) stores the last probe date; missing or corrupt counts as never probed. Silent when every present harness is ok. On missing/differs, print one compact block (the failing lines plus "fix: run darkf setup") before the invoked command's own output. Never fatal — the probe never changes the invoking command's exit code. \`setup\` and \`upgrade\` skip the probe and refresh the state file.
-- Packaging: darkf/package.json gains "files": ["src", "workflows", "skills", "docs"].
-- Docs move: move site/src/content/docs/** to darkf/docs/** and rebase the site's content loading onto darkf/docs/ (site/src/content.config.ts, starlight docsLoader — rebase it, or if the loader cannot rebase, a prepack copy with a drift check per the spec). bun run build in site/ must still succeed.
-- Tests per the spec's Testing section: setup tests with deps injected like update.ts's UpdateDeps (home, bundledDir, existsBinary) covering host detection by dir alone / by binary / absent, copy and mirror semantics including leftover-file wipe and crashed-temp-dir replacement, state reporting, and exit codes; doctor/validate split tests; daily-probe tests (first-of-day runs, same-day skip, corrupt state file, silent-ok, block-on-failure, exemptions); the tarball smoke check (npm pack, temp-prefix install, run setup/doctor/render and the skill-referenced docs paths).
+Do not commit. Do not touch tasks.json — Review verifies your claim and MarkDone updates it once that verification passes.
 
-Follow the existing code style of darkf/src/cli/index.ts and darkf/src/cli/update.ts. Do not commit. Do not touch files outside darkf/src/, darkf/package.json, darkf/skills/, darkf/docs/, site/, and docs/specs/${FEATURE}/.
-
-Finish with event "implemented". If the spec cannot be implemented as written, finish with event "blocked" and put the reason in the output. If a review demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
-          on: { implemented: "Check", blocked: DONE, disputed: DONE },
+Finish with event "implemented". If the task cannot be implemented as specified, finish with event "blocked" and put the reason in the output. If a review demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
+          on: { implemented: "Test", blocked: DONE, disputed: DONE },
         },
-        Check: {
+        Test: {
           type: "script",
-          file: "check.ts",
+          file: "test.ts",
           retries: 1,
           on: { passed: "Review", failed: "Fix" },
         },
@@ -94,10 +169,10 @@ Finish with event "implemented". If the spec cannot be implemented as written, f
           retries: 1,
           prompt: `You are repairing the ${FEATURE} implementation after a failed gate.
 
-The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/spec.md for the contract. Fix the code minimally. Do not redesign. Do not commit. Do not touch files outside darkf/src/, darkf/package.json, darkf/skills/, darkf/docs/, and site/.
+The handoff you received carries either the failing tail of "bun run check" or the reviewer's change list. Read docs/specs/${FEATURE}/'s contract (spec.md if present, otherwise prd.md + design.md). Fix the code minimally. Do not redesign. Do not commit.
 
 Finish with event "fixed". If the failure exposes a spec defect you cannot resolve in code, finish with event "blocked" and the reason. If the demand contradicts the spec, finish with event "disputed" and ground the objection in the spec text.`,
-          on: { fixed: "Check", blocked: DONE, disputed: DONE },
+          on: { fixed: "Test", blocked: DONE, disputed: DONE },
         },
         Review: {
           type: "agent",
@@ -105,28 +180,30 @@ Finish with event "fixed". If the failure exposes a spec defect you cannot resol
           retries: 1,
           prompt: `You are an independent reviewer. Do not modify any files.
 
-Verify the working tree against docs/specs/${FEATURE}/spec.md:
-- inspect git status --porcelain in addition to git diff — agent-authored new files are invisible to git diff alone
-- check the host table matches the spec exactly: five harnesses (claude code, opencode, codex cli, gemini cli, cursor), their skills dirs and binary names, and dir-exists OR binary-on-PATH detection
-- check the write policy: darkf-* namespace only, dir replacement not file merge (temp-dir copy, remove, rename), exact-mirror destinations, no flags, no prompts, undetected hosts skipped without dir creation
-- check the upgrade sync: runs after self-update under a "skills:" header, best-effort, same code path as setup
-- check the doctor/validate split: doctor with no ref = environment only (binaries, cwd sanity, skills section); validate <ref> inherits the workflow checks with unchanged lines and exit codes; doctor <ref> back-compat prints usage and exits 1; the skills section names every known harness with the spec's states and exit rules; the stale "src/agents/" hint is fixed to src/kit/agents/
-- check the daily probe: once per calendar day on first invocation after the update gate, skills-only via the shared function, spec state file with missing/corrupt treated as never probed, silent on ok, compact block plus fix hint on missing/differs, never fatal, setup/upgrade exempt and refreshing the state file
-- check packaging: package.json files allowlist exactly ["src", "workflows", "skills", "docs"]; docs moved to darkf/docs/; the site still builds from the moved docs (loader rebase or prepack copy with drift check)
-- check the bundled skills are byte-unchanged: darkf/skills/darkf-usage/SKILL.md and darkf/skills/darkf-writing-workflows/SKILL.md
-- check the tests cover the spec's Testing section: setup deps-injection fixtures, mirror semantics, doctor/validate split, daily probe behaviors, tarball smoke check
-- you may run "bun test darkf/src" and "bun run lint" yourself
+Find the run directory under .darkf/run/ with the latest mtime and read its tasks.json. Find the one task whose status is "in-progress" — that is the task just implemented and tested. A task reaching you is a claim to verify, not a fact to trust:
 
-Approve only if the implementation fulfills the spec. Otherwise list every required change concretely in the output.
+- inspect git status --porcelain in addition to git diff — agent-authored new files are invisible to git diff alone
+- read docs/specs/${FEATURE}/'s contract (spec.md if present, otherwise prd.md + design.md) for what each id in the task's "satisfies" list actually requires, and confirm the working tree genuinely satisfies every one of them
+- you may run the project's own test/lint commands yourself
+
+Approve only if the task's claim holds in full. Otherwise list every required change concretely in the output.
 
 Finish with event "approved" or event "changes_requested".`,
-          on: { approved: "Document", changes_requested: "Fix" },
+          on: { approved: "MarkDone", changes_requested: "Fix" },
         },
-        Document: {
-          type: "agent",
-          agent: { model: MODEL },
+        MarkDone: {
+          type: "script",
+          file: "mark-done.ts",
           retries: 1,
-          prompt: `You are updating user-facing documentation for the ${FEATURE} feature, after an independent review approved the implementation. Do not modify code or tests.
+          on: { marked: "Dispatch" },
+        },
+      },
+    },
+    Document: {
+      type: "agent",
+      agent: { model: MODEL },
+      retries: 1,
+      prompt: `You are updating user-facing documentation for the ${FEATURE} feature, after every task in its plan was implemented and independently reviewed. Do not modify code or tests.
 
 Read docs/specs/${FEATURE}/spec.md (or prd.md/design.md when present) for what the feature does, and run git diff master plus git status --porcelain to see what shipped.
 
@@ -141,9 +218,7 @@ Docs must match the spec when this run lands — drift accumulates one stale pag
 Do NOT touch: ROADMAP.md, darkf/feedback/, docs/specs/ (the spec archive move and roadmap entry are post-merge human curation), any file under darkf/src/ or darkf-opencode-plugin/.
 
 If nothing user-facing changed and no doc drifted, finish with event "skipped" and put the one-line reason in the output. Otherwise make the edits and finish with event "documented". If the docs cannot be updated (for example the site is broken), finish with event "blocked" and the reason.`,
-          on: { documented: "Finish", skipped: "Finish", blocked: DONE },
-        },
-      },
+      on: { documented: "Finish", skipped: "Finish", blocked: DONE },
     },
     Finish: {
       type: "script",
