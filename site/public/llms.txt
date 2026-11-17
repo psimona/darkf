@@ -1,0 +1,32 @@
+# darkf
+
+> A small, typed workflow engine for agent + script state graphs — deterministic automation with LLM agents. Build a dark factory: most runs finish with nobody watching, and a run stops itself at the failing step and reports why instead of running on broken work.
+
+darkf runs automation as a workflow: a typed TypeScript state graph describing steps and what happens next. Some steps dispatch an AI agent (Claude Code, OpenCode, or any custom `AgentRunner`); some steps are plain code. Every run is journaled to disk as it happens, so a finished, failed, or stuck run is answered by a file, not a terminal you forgot to watch.
+
+## Start here
+- [Install](https://psimona.github.io/darkf/start-here/install/)
+- [Quickstart](https://psimona.github.io/darkf/start-here/quickstart/)
+
+## Concepts
+- [Node types](https://psimona.github.io/darkf/concepts/node-types/)
+- [Failure modes](https://psimona.github.io/darkf/concepts/failure-modes/)
+- [Handoff](https://psimona.github.io/darkf/concepts/handoff/)
+- [Journal](https://psimona.github.io/darkf/concepts/journal/)
+
+## Guides
+- [Write your first workflow](https://psimona.github.io/darkf/guides/write-your-first-workflow/)
+- [Pick an agent runner](https://psimona.github.io/darkf/guides/pick-an-agent-runner/)
+- [Run detached and monitor it](https://psimona.github.io/darkf/guides/run-detached-and-monitor/)
+- [Render a workflow to mermaid](https://psimona.github.io/darkf/guides/render-to-mermaid/)
+- [Plan with a task queue](https://psimona.github.io/darkf/guides/plan-with-a-task-queue/)
+- [Test your workflow](https://psimona.github.io/darkf/guides/test-your-workflow/)
+
+## Reference
+- [CLI commands](https://psimona.github.io/darkf/reference/cli-commands/)
+- [Core types](https://psimona.github.io/darkf/reference/core-types/)
+- [Package map](https://psimona.github.io/darkf/reference/package-map/)
+
+## Source
+- [GitHub](https://github.com/psimona/darkf)
+- [npm](https://www.npmjs.com/package/@psimona/darkf)

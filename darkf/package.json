@@ -30,7 +30,11 @@
     "state-graph",
     "claude-code",
     "opencode",
-    "bun"
+    "bun",
+    "dark-factory",
+    "software-factory",
+    "automation",
+    "llm-agents"
   ],
   "engines": {
     "bun": ">=1.2"

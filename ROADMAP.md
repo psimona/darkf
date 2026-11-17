@@ -24,6 +24,15 @@ shipped.
 > package, a maintainer approves on npmjs.com. See
 > `docs/specs/_built/oss-publish/spec.md`. CI runs on GitHub Actions; the
 > Forgejo CI workflow was removed.
+>
+> **2026-11-17 — visibility, sharing, and indexing.** Jidoka-not-full-
+> autonomy framing landed in `README.md`, the docs homepage, and as a
+> new `PHILOSOPHY.md` principle; `site/public/robots.txt` and
+> `llms.txt` added; npm keywords gained `dark-factory`,
+> `software-factory`, `automation`, `llm-agents`. See
+> `docs/specs/_built/visibility-sharing-and-indexing/spec.md`.
+> Posting and the demo recording are tracked separately — see that
+> spec's follow-ups and `docs/specs/demo-visibility/spec.md`.
 
 **darkf-core** — the shared vocabulary
 - `types.ts`: `NodeResult`, `DispatchInfo` (incl. `step`/`rootDir`), `AgentRunner`/`ScriptRunner`, the four-phase `NodeStatus`, the 9-variant `CrashReason` taxonomy, `WorkflowDef`/`StateDef` (agent, script, composite with `maxCycles`).
@@ -119,6 +128,7 @@ run (see `darkf/feedback/2026-10-31-task-list-json.md`).
 - **Resume-from-journal** — PHILOSOPHY.md states the journal + last `NodeResult` should be enough to resume a run, but no resume command/logic exists yet in the CLI. Investigation draft: `docs/specs/resume-from-journal/spec.md`.
 - **Observability / learning loop** — no infra yet for capturing cross-run traces or evals to learn from past workflow runs. Candidate: [Opik](https://github.com/comet-ml/opik) (comet-ml's LLM tracing + eval platform, self-hosted or Comet-hosted) as the backing store, instrumenting the engine's dispatch loop to emit spans per node/task. Would sit alongside (or replace) the existing lightweight `.darkf/run/<runId>/journal.jsonl` convention — worth weighing that overlap before committing. Still at "should we even do this" — revisit when learning/improvement becomes the focus, not before.
 - **Machine-readable roadmap format** — `docs/roadmap/*/map.md` is prose-first; a JSON sidecar would let the TUI plugin and the docs site render the decision map and its frontier. Draft: `docs/specs/roadmap-json/spec.md`.
+- **darkf-backplane** — a separate future project, not a part of this engine: chat-based workflow access for non-technical people, secure cloud scheduling, and analytics/learning over full run traces (the latter overlaps the observability/learning-loop item above). Still at ideation; likeliest build order is scheduling, then trace viewing, then chat access, then learning from traces — not committed.
 
 ## Open questions
 

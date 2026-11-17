@@ -3,6 +3,17 @@
 Principles that have steered darkf's design so far. Treat these as load-bearing —
 when a new feature request seems to want an exception, check here first.
 
+## Jidoka, not full autonomy
+
+darkf is not trying to run with nobody watching. It's built on jidoka —
+the lean-manufacturing principle that a line stops itself the moment
+something's wrong and calls for a person, instead of running on bad
+work. A crash (see "Crash is not a verdict" below) is that stop: the
+engine ends the run at the failing step rather than guessing, retrying
+forever, or routing around it silently. Lights-out automation means
+most runs finish clean with nobody watching; it does not mean no one
+is ever needed.
+
 ## Simplicity, not options — customizability with code
 
 darkf offers few configuration knobs. Where behavior needs to vary, the answer

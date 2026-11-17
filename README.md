@@ -3,6 +3,11 @@
 Deterministic automation with LLM agents. The engine for your dark
 factory.
 
+Lights out when a run is clean. Lights on the moment it isn't. That's
+[jidoka](https://en.wikipedia.org/wiki/Autonomation) — the line stops
+itself at the failing step and calls for help, instead of an agent
+running on past broken work.
+
 darkf runs your automation as a workflow: a typed state graph in plain
 TypeScript describing steps and what happens next. Some steps ask an AI
 agent to do the work; some steps are plain code. You decide which is
