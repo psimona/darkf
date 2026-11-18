@@ -1,7 +1,7 @@
 import { type FSWatcher, readFileSync, statSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
+import type { Plugin } from "@opencode/plugin/tui";
 import { journalPathFor, type RegistryEntry as RunEntry } from "@psimona/darkf";
 import type { WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { createSignal } from "solid-js";
@@ -43,18 +43,10 @@ async function loadWorkflowCached(
   }
 }
 
-function currentSessionID(api: TuiPluginApi): string | undefined {
-  const route = api.route.current;
-  if (route.name !== "session") return undefined;
-  // Validated defensively rather than narrowed directly: `TuiRouteCurrent`'s
-  // trailing catch-all variant (`{ name: string; params?: Record<string,
-  // unknown> }`) shares `name`'s primitive type with the `"session"` variant,
-  // so TS keeps both in play after the `===` check and widens `params`
-  // accordingly — a known discriminated-union narrowing gap, not a real
-  // runtime ambiguity (a `"session"` route's `params.sessionID` is always a
-  // string per the TUI plugin spec).
-  const sessionID = (route.params as { sessionID?: unknown }).sessionID;
-  return typeof sessionID === "string" ? sessionID : undefined;
+function currentSessionID(context: Plugin.Context): string | undefined {
+  const route = context.ui.router.current();
+  // A plugin route carries no session; only the session route does.
+  return route.type === "session" ? route.sessionID : undefined;
 }
 
 export interface LiveStore {
@@ -68,18 +60,24 @@ export interface LiveStore {
   bindingFor: (runId: string) => RunBinding | undefined;
 }
 
+export interface LiveStoreHandle {
+  store: LiveStore;
+  /** Stops the poll/watch loop and closes its file watchers. The setup hook
+   *  returns this so the host disposes it on plugin unload. */
+  dispose: () => void;
+}
+
 /**
- * Starts the one poll/watch loop this plugin runs, and wires its own
- * teardown to `api.lifecycle.onDispose`. `onNewRun` fires once per run the
- * instant it's first observed — including one with no session bound (the
- * `home`-screen case) — see spec: Auto-open and the toggle. It never fires
- * again for the same `runId`.
+ * Starts the one poll/watch loop this plugin runs, and returns its teardown.
+ * `onNewRun` fires once per run the instant it's first observed — including
+ * one with no session bound (the `home`-screen case) — see spec: Auto-open
+ * and the toggle. It never fires again for the same `runId`.
  */
 export function startStore(
-  api: TuiPluginApi,
+  context: Plugin.Context,
   directory: () => string,
   onNewRun: (binding: RunBinding) => void,
-): LiveStore {
+): LiveStoreHandle {
   const [views, setViews] = createSignal<ReadonlyMap<string, PlanView>>(new Map());
   const [taskViews, setTaskViews] = createSignal<ReadonlyMap<string, TaskListView>>(new Map());
   const [picker, setPicker] = createSignal<PickerEntry[]>([]);
@@ -158,7 +156,7 @@ export function startStore(
     const liveIds = new Set(entries.map((e) => e.runId));
     forgetUnless(liveIds);
 
-    const sessionID = currentSessionID(api);
+    const sessionID = currentSessionID(context);
     for (const entry of entries) {
       const { binding, isNewlyBound } = ensureBinding(entry, sessionID);
       if (isNewlyBound) onNewRun(binding);
@@ -180,7 +178,7 @@ export function startStore(
               entry.runId,
               await loadWorkflowCached(entry.workflowDir),
               state.journalText,
-              supervisorViewFor(api, bindingFor(entry.runId)?.supervisorSessionID),
+              supervisorViewFor(context.data, bindingFor(entry.runId)?.supervisorSessionID),
             )
           : cachedView.view;
       viewCache.set(entry.runId, { mtimeMs: journalMtime, view });
@@ -209,13 +207,16 @@ export function startStore(
 
   void refresh();
   const interval = setInterval(() => void refresh(), POLL_MS);
-  api.lifecycle.onDispose(() => {
+  const dispose = (): void => {
     clearInterval(interval);
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
     for (const watcher of taskWatchers.values()) watcher.close();
     taskWatchers.clear();
-  });
+  };
 
-  return { views, taskViews, pickerCandidates: picker, bindingFor };
+  return {
+    store: { views, taskViews, pickerCandidates: picker, bindingFor },
+    dispose,
+  };
 }

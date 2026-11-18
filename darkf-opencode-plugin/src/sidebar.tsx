@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui";
+import type { Plugin } from "@opencode/plugin/tui";
 import { For, Show } from "solid-js";
 import type { PlanNode, PlanView } from "./digest.ts";
 import type { LiveStore } from "./store.ts";
@@ -28,7 +28,8 @@ function lineFor({ node, depth }: Row): string {
 }
 
 // The run bound to this session, if any — never ambiguous at this tier,
-// since it's already scoped to `session_id` (see spec: Multiple live runs).
+// since the slot input already carries the session (see spec: Multiple
+// live runs).
 function runForSession(store: LiveStore, sessionID: string): PlanView | undefined {
   for (const [runId, view] of store.views()) {
     if (store.bindingFor(runId)?.supervisorSessionID === sessionID) return view;
@@ -36,43 +37,40 @@ function runForSession(store: LiveStore, sessionID: string): PlanView | undefine
   return undefined;
 }
 
-/** The `sidebar_content` slot — detailed, per-session (see spec: Three
+/** The `sidebar.content` slot — detailed, per-session (see spec: Three
  *  tiers, not one). Renders nothing when this session has no bound run. */
-export function registerSidebar(api: TuiPluginApi, store: LiveStore): void {
-  api.slots.register({
-    order: 450,
-    slots: {
-      sidebar_content: (ctx: Readonly<TuiSlotContext>, props: { session_id: string }) => {
-        const view = () => runForSession(store, props.session_id);
-        const rows = () => {
-          const v = view();
-          return v ? flatten(v.root, 0) : [];
-        };
-        const accent = () => ctx.theme.current.accent;
-        const errorColor = () => ctx.theme.current.error;
+export function registerSidebar(context: Plugin.Context, store: LiveStore): void {
+  context.ui.slot({
+    append: "sidebar.content",
+    render: (props: { readonly sessionID: string }) => {
+      const view = () => runForSession(store, props.sessionID);
+      const rows = () => {
+        const v = view();
+        return v ? flatten(v.root, 0) : [];
+      };
+      const accent = () => context.theme.text.action.primary.base;
+      const errorColor = () => context.theme.text.feedback.error.base;
 
-        return (
-          <Show when={view() !== undefined}>
-            <box flexDirection="column" title="darkf">
-              <Show when={view()?.workflowError}>
-                <text fg={errorColor()}>workflow error: {view()!.workflowError}</text>
-              </Show>
-              <For each={rows()}>
-                {(row) => <text fg={row.node.active ? accent() : undefined}>{lineFor(row)}</text>}
-              </For>
-              <Show when={view()?.crash}>
-                <text fg={errorColor()}>
-                  crashed: {JSON.stringify(view()!.crash!.reason)} (attempt {view()!.crash!.attempt}
-                  )
-                </text>
-              </Show>
-              <Show when={view()?.stall}>
-                <text fg={errorColor()}>{view()!.stall}</text>
-              </Show>
-            </box>
-          </Show>
-        );
-      },
+      return (
+        <Show when={view() !== undefined}>
+          <box flexDirection="column" title="darkf">
+            <Show when={view()?.workflowError}>
+              <text fg={errorColor()}>workflow error: {view()!.workflowError}</text>
+            </Show>
+            <For each={rows()}>
+              {(row) => <text fg={row.node.active ? accent() : undefined}>{lineFor(row)}</text>}
+            </For>
+            <Show when={view()?.crash}>
+              <text fg={errorColor()}>
+                crashed: {JSON.stringify(view()!.crash!.reason)} (attempt {view()!.crash!.attempt})
+              </text>
+            </Show>
+            <Show when={view()?.stall}>
+              <text fg={errorColor()}>{view()!.stall}</text>
+            </Show>
+          </box>
+        </Show>
+      );
     },
   });
 }

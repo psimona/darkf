@@ -1,26 +1,24 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui";
+import type { Plugin } from "@opencode/plugin/tui";
 import { Show } from "solid-js";
 import type { LiveStore } from "./store.ts";
 import { summaryLine } from "./summary.ts";
 
-/** The `app_bottom` slot — compact, always-visible, never scoped to a
- *  session (see spec: Three tiers, not one). Renders nothing when no run
- *  is live. */
-export function registerBand(api: TuiPluginApi, store: LiveStore): void {
-  api.slots.register({
-    order: 50,
-    slots: {
-      app_bottom: (_ctx: Readonly<TuiSlotContext>) => {
-        const summary = () => summaryLine(store);
-        return (
-          <box paddingX={1}>
-            <Show when={summary().length > 0}>
-              <text>{summary()}</text>
-            </Show>
-          </box>
-        );
-      },
+/** The compact, always-visible tier (V1's `app_bottom`, now the prompt
+ *  footer's status row — present on the home and session screens alike).
+ *  Renders nothing when no run is live. */
+export function registerBand(context: Plugin.Context, store: LiveStore): void {
+  context.ui.slot({
+    append: "prompt.footer.status",
+    render: () => {
+      const summary = () => summaryLine(store);
+      return (
+        <box paddingX={1}>
+          <Show when={summary().length > 0}>
+            <text>{summary()}</text>
+          </Show>
+        </box>
+      );
     },
   });
 }

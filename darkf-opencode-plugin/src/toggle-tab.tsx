@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 
-import { createTextAttributes } from "@opentui/core";
+import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 
 const LABEL = "df";
@@ -22,16 +22,15 @@ const BOLD = createTextAttributes({ bold: true });
  * import each other (pre-existing on `master` under the old `route.tsx`/
  * `toggle.tsx` names — this split fixes it rather than re-creating it here).
  *
- * Fires on mouseUP, not mousedown: the host `Dialog` closes on mouseup over
- * its full-screen backdrop (packages/tui/src/ui/dialog.tsx), so a
- * mousedown-open gesture would deliver its own release into the freshly
- * mounted backdrop and close the overlay instantly. Mouseup completes the
- * gesture before the dialog exists; it also matches the host's own controls
- * (DialogHeader's close label uses onMouseUp).
+ * Fires on mouseUP, not mousedown: the host closes its dialogs on mouseup
+ * over the full-screen backdrop, so a mousedown-open gesture would deliver
+ * its own release into the freshly mounted backdrop and close the overlay
+ * instantly. Mouseup completes the gesture before the dialog exists; it
+ * also matches the host's own controls.
  */
 export function ToggleTab(props: {
   active: boolean;
-  accent: string;
+  accent: string | RGBA;
   onPress: () => void;
   width?: number;
   rows?: number;

@@ -1,15 +1,14 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui";
-import { createTextAttributes } from "@opentui/core";
+import { type Plugin, usePlugin } from "@opencode/plugin/tui";
+import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { EXIT, type Task, type TaskStatus } from "@psimona/darkf/src/core/index.ts";
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 import type { PlanNode, PlanView, TaskListView } from "./digest.ts";
 import { type PickerEntry, pickerOrder, pickerPage, type RunBinding } from "./locate.ts";
 import type { LiveStore } from "./store.ts";
 import { ToggleTab } from "./toggle-tab.tsx";
 
-const MODE = "darkf.plan";
 const TYPE_ICON: Record<"agent" | "script", string> = { agent: "🤖", script: "⚙️" };
 const BOLD = createTextAttributes({ bold: true });
 const DIM = createTextAttributes({ dim: true });
@@ -20,45 +19,84 @@ const TASK_GLYPHS: Record<TaskStatus, string> = {
   failed: "✗",
 };
 
-interface OverlayState {
-  runId?: string;
-  size: "medium" | "xlarge";
-}
-
 // Module-level, not component-local — `openOverlay`/`closeOverlay` are called
-// from `toggle.tsx`'s slot handlers and `tui.tsx`'s `onNewRun`/command, none
-// of which sit inside this module's own render tree. `null` = closed;
-// `{ runId }` (runId possibly absent) = open. Same "plugin-owned, in-memory,
-// not persisted" shape `locate.ts`'s `bindings` map already uses.
-const [overlay, setOverlay] = createSignal<OverlayState | null>(null);
+// from `toggle.tsx`'s slot handler and `tui.tsx`'s auto-open/command, none of
+// which sit inside this module's own render tree. `undefined` = not
+// initialized (setup hasn't run); once set, open state lives entirely in the
+// host dialog (an open host dialog = open overlay). Same "plugin-owned,
+// in-memory, not persisted" shape `locate.ts`'s `bindings` map already uses.
+let registered: { context: Plugin.Context; store: LiveStore } | undefined;
 
-/** Set once by `registerOverlay` so `openOverlay` (called from outside any
- *  render tree — see the signal's comment) can read the renderer's width
- *  at open time. Sizing freezes there: a mid-session terminal resize
- *  doesn't reflow an open overlay (see spec:
- *  docs/specs/_built/opencode-overlay-sizing/spec.md). */
-let registeredApi: TuiPluginApi | undefined;
+/** Captures the context and store the overlay opens against. Called once
+ *  from `setup`; before it runs, `openOverlay`/`closeOverlay` no-op. */
+export function initOverlay(context: Plugin.Context, store: LiveStore): void {
+  registered = { context, store };
+}
 
 /** Compact under ~100 cols (narrow terminal / mobile), expanded otherwise.
  *  Unknown or 0 width also compacts — the content is fluid, so medium never
- *  breaks, while xlarge can overflow a host that never reported a width. */
+ *  breaks, while xlarge can overflow a host that never reported a width.
+ *  Read at open time only: a mid-session terminal resize doesn't reflow an
+ *  open overlay (see spec: docs/specs/_built/opencode-overlay-sizing/spec.md). */
 function overlaySize(): "medium" | "xlarge" {
-  const width = registeredApi?.renderer.width ?? 0;
+  const width = registered?.context.renderer.width ?? 0;
   return width >= 100 ? "xlarge" : "medium";
 }
 
-/** Opens the overlay bound to `runId`, or with no run resolved (the
- *  `Picker` renders) when omitted. Never touches `api.route.current` — see
- *  spec: docs/specs/_built/opencode-overlay-dialog/spec.md. Safe to call
- *  whether or not the overlay is already open; it just replaces the shown
- *  run (and re-reads the terminal width — replacing the shown run is a new
- *  open). */
+/** Opens the overlay bound to `runId`, or the run picker when omitted. Never
+ *  touches the router — the overlay is a host dialog (see spec:
+ *  docs/specs/_built/opencode-overlay-dialog/spec.md). Safe to call whether
+ *  or not the overlay is already open; showing over the active dialog
+ *  replaces it (and re-reads the terminal width — replacing the shown run is
+ *  a new open). */
 export function openOverlay(runId?: string): void {
-  setOverlay({ runId, size: overlaySize() });
+  const host = registered;
+  if (!host) return;
+  if (runId === undefined) {
+    void pickRun(host);
+    return;
+  }
+  host.context.ui.dialog.show(() => <OverlayContent store={host.store} runId={runId} />);
+  host.context.ui.dialog.set({ size: overlaySize() });
 }
 
 export function closeOverlay(): void {
-  setOverlay(null);
+  registered?.context.ui.dialog.clear();
+}
+
+const NEXT_PAGE = "__next_page__";
+
+/** The run picker, as a native select dialog (V1 rendered `DialogSelect`
+ *  inside the overlay dialog). Escape closes it, leaving nothing open.
+ *  Selecting "→ more…" re-opens one page deeper; selecting a run re-opens
+ *  as the run view. Only bounds display — `listEntries` still returns
+ *  everything, so no historical data is lost, just how far back one page
+ *  shows. Reopening history starts back at page 1. */
+async function pickRun(host: { context: Plugin.Context; store: LiveStore }): Promise<void> {
+  let page = 0;
+  for (;;) {
+    const paged = pickerPage(pickerOrder(host.store.pickerCandidates()), page);
+    const value = await host.context.ui.dialog.select<string>({
+      title: "darkf runs — pick one",
+      options: [
+        ...paged.rows.map((c) => ({
+          title: `${c.active ? "●" : "○"} ${c.entry.runId}`,
+          value: c.entry.runId,
+          description: c.entry.rootDir,
+        })),
+        ...(paged.hasMore
+          ? [{ title: "→ more…", value: NEXT_PAGE, description: "next 50 runs" }]
+          : []),
+      ],
+    });
+    if (value === undefined) return;
+    if (value === NEXT_PAGE) {
+      page += 1;
+      continue;
+    }
+    openOverlay(value);
+    return;
+  }
 }
 
 /** A composite's expanded state is `isOpen(path) || node.active` — clicking
@@ -74,8 +112,8 @@ function renderNode(
   path: string,
   prefix: string,
   isLast: boolean,
-  accent: string,
-  errorColor: string,
+  accent: RGBA,
+  errorColor: RGBA,
   isOpen: (path: string) => boolean,
   toggleOpen: (path: string) => void,
 ): JSX.Element {
@@ -129,8 +167,8 @@ function renderNode(
 
 function PlanGraph(props: {
   view: PlanView;
-  accent: string;
-  errorColor: string;
+  accent: RGBA;
+  errorColor: RGBA;
   isOpen: (path: string) => boolean;
   toggleOpen: (path: string) => void;
 }): JSX.Element {
@@ -188,18 +226,18 @@ function SupervisorPanel(props: { view: PlanView }): JSX.Element {
 function TaskRow(props: {
   task: Task;
   active: boolean;
-  accent: string;
-  errorColor: string;
+  accent: RGBA;
+  errorColor: RGBA;
 }): JSX.Element {
   const task = props.task;
   const style = (() => {
     switch (task.status) {
       case "in-progress":
-        return { fg: props.accent as string | undefined, attributes: BOLD };
+        return { fg: props.accent, attributes: BOLD };
       case "done":
         return { fg: undefined, attributes: DIM };
       case "failed":
-        return { fg: props.errorColor as string | undefined, attributes: undefined };
+        return { fg: props.errorColor, attributes: undefined };
       default:
         return { fg: undefined, attributes: undefined };
     }
@@ -225,8 +263,8 @@ function TaskRow(props: {
 // stall warning.
 function TaskPane(props: {
   view: TaskListView | undefined;
-  accent: string;
-  errorColor: string;
+  accent: RGBA;
+  errorColor: RGBA;
 }): JSX.Element {
   const view = () => props.view;
   const valid = () => {
@@ -265,7 +303,7 @@ function TaskPane(props: {
 function TabBar(props: {
   active: "workflow" | "tasks";
   tasksTitle: string | undefined;
-  accent: string;
+  accent: RGBA;
   onSelect: (tab: "workflow" | "tasks") => void;
 }): JSX.Element {
   return (
@@ -291,89 +329,24 @@ function TabBar(props: {
   );
 }
 
-const NEXT_PAGE = "__next_page__";
-
-function Picker(props: { api: TuiPluginApi; candidates: PickerEntry[] }): JSX.Element {
-  const { DialogSelect } = props.api.ui;
-  // Component-local and scoped to this mount: the Picker renders only while
-  // no run view is showing, so reopening history starts back at page 1 —
-  // same scoping `manualOpen` uses for composite expand state.
-  const [page, setPage] = createSignal(0);
-  const paged = createMemo(() => pickerPage(pickerOrder(props.candidates), page()));
-  return (
-    <DialogSelect
-      title="darkf runs — pick one"
-      options={[
-        ...paged().rows.map((c) => ({
-          title: `${c.active ? "●" : "○"} ${c.entry.runId}`,
-          value: c.entry.runId,
-          description: c.entry.rootDir,
-        })),
-        ...(paged().hasMore
-          ? [{ title: "→ more…", value: NEXT_PAGE, description: "next 50 runs" }]
-          : []),
-      ]}
-      onSelect={(option) => {
-        if (option.value === NEXT_PAGE) setPage((p) => p + 1);
-        else openOverlay(option.value as string);
-      }}
-    />
-  );
-}
-
-/** The overlay's content, hosted inside `api.ui.Dialog` (see
- *  `registerOverlay` below) instead of a registered route — opening it
- *  never changes `api.route.current`, so a run first detected while it's
- *  open still binds to the real session (see spec:
- *  docs/specs/_built/opencode-overlay-dialog/spec.md). `api.mode.push` and the
- *  explicit escape binding are kept even though the host `Dialog` may
- *  already close on escape on its own (unconfirmed — see the spec's Open
- *  decisions): redundant-but-harmless beats silently unreachable. */
-function OverlayContent(props: {
-  api: TuiPluginApi;
-  store: LiveStore;
-  runId: string | undefined;
-}): JSX.Element {
-  const { api, store } = props;
-  const popMode = api.mode.push(MODE);
+/** The overlay's content, hosted in the host's own dialog (`ui.dialog.show`)
+ *  instead of a registered route — opening it never changes
+ *  `ui.router.current()`, so a run first detected while it's open still
+ *  binds to the real session (see spec:
+ *  docs/specs/_built/opencode-overlay-dialog/spec.md). Escape closing is the
+ *  host dialog's own behavior; the layer here only carries the tab keys.
+ *  The `darkf.plan` mode push keeps those keys out of the base layer while
+ *  the dialog is up. */
+function OverlayContent(props: { store: LiveStore; runId: string }): JSX.Element {
+  const context = usePlugin();
+  const popMode = context.keymap.mode.push("darkf.plan");
   onCleanup(popMode);
 
-  const disposeLayer = api.keymap.registerLayer({
-    mode: MODE,
-    commands: [
-      {
-        name: "darkf.toggle",
-        title: "Back to chat",
-        category: "darkf",
-        run: () => closeOverlay(),
-      },
-      {
-        name: "darkf.tab.workflow",
-        title: "Workflow tab",
-        category: "darkf",
-        run: () => setTab("workflow"),
-      },
-      {
-        name: "darkf.tab.tasks",
-        title: "Tasks tab",
-        category: "darkf",
-        run: () => setTab("tasks"),
-      },
-    ],
-    bindings: [
-      { key: "escape", cmd: "darkf.toggle", desc: "Back to chat" },
-      { key: "1", cmd: "darkf.tab.workflow", desc: "Workflow tab" },
-      { key: "2", cmd: "darkf.tab.tasks", desc: "Tasks tab" },
-    ],
-  });
-  onCleanup(disposeLayer);
+  const accent = context.theme.text.action.primary.base;
+  const errorColor = context.theme.text.feedback.error.base;
 
-  const view = () => (props.runId ? store.views().get(props.runId) : undefined);
-  const taskView = () => (props.runId ? store.taskViews().get(props.runId) : undefined);
-  // Full history, not just live runs — a finished run still opens its
-  // graph from here (store.views covers every registry entry; see
-  // docs/specs/opencode-search-candidates/spec.md).
-  const candidates = () => store.pickerCandidates();
+  const view = () => props.store.views().get(props.runId);
+  const taskView = () => props.store.taskViews().get(props.runId);
 
   // Tab "workflow" (the workflow graph) is the default, so auto-open behavior
   // is unchanged; "tasks" only exists while tasks.json does (see TabBar).
@@ -384,6 +357,34 @@ function OverlayContent(props: {
     if (tv?.state === "valid") return `tasks ${tv.done}/${tv.total}`;
     return undefined;
   };
+
+  // Created after the tab signal: the layer factory runs once untracked at
+  // registration, so `setTab` must already exist. Scoped to this mount —
+  // the host disposes it when the dialog closes.
+  context.keymap.layer(() => ({
+    mode: "darkf.plan",
+    commands: [
+      {
+        id: "darkf.tab.workflow",
+        title: "Workflow tab",
+        group: "darkf",
+        bind: "1",
+        run: () => {
+          setTab("workflow");
+        },
+      },
+      {
+        id: "darkf.tab.tasks",
+        title: "Tasks tab",
+        group: "darkf",
+        bind: "2",
+        run: () => {
+          setTab("tasks");
+        },
+      },
+    ],
+    bindings: ["darkf.tab.workflow", "darkf.tab.tasks"],
+  }));
 
   // Manually clicked-open composite paths (see `renderNode`'s doc
   // comment). Scoped to this mount, not persisted — reopening the overlay
@@ -401,29 +402,21 @@ function OverlayContent(props: {
 
   return (
     <box flexDirection="column" height="100%" padding={1}>
-      <TabBar
-        active={tab()}
-        tasksTitle={tasksTabTitle()}
-        accent={api.theme.current.accent as unknown as string}
-        onSelect={setTab}
-      />
+      <TabBar active={tab()} tasksTitle={tasksTabTitle()} accent={accent} onSelect={setTab} />
       <scrollbox flexGrow={1} minHeight={0} scrollY border>
-        <Show when={view()} fallback={<Picker api={api} candidates={candidates()} />}>
+        {/* The auto-open fires the instant a run is first observed, which can
+            be a tick ahead of the store's first view for it — a brief
+            placeholder, not the V1 picker fallback. */}
+        <Show when={view()} fallback={<text attributes={DIM}>loading run…</text>}>
           {(resolvedView: () => PlanView) => (
             <Show
               when={tab() === "workflow"}
-              fallback={
-                <TaskPane
-                  view={taskView()}
-                  accent={api.theme.current.accent as unknown as string}
-                  errorColor={api.theme.current.error as unknown as string}
-                />
-              }
+              fallback={<TaskPane view={taskView()} accent={accent} errorColor={errorColor} />}
             >
               <PlanGraph
                 view={resolvedView()}
-                accent={api.theme.current.accent as unknown as string}
-                errorColor={api.theme.current.error as unknown as string}
+                accent={accent}
+                errorColor={errorColor}
                 isOpen={isOpen}
                 toggleOpen={toggleOpen}
               />
@@ -450,7 +443,7 @@ function OverlayContent(props: {
           active={true}
           width={6}
           rows={2}
-          accent={api.theme.current.accent as unknown as string}
+          accent={accent}
           onPress={() => closeOverlay()}
         />
       </box>
@@ -458,28 +451,4 @@ function OverlayContent(props: {
   );
 }
 
-/** Registers the `app` slot — top-level, mounted for the plugin's whole
- *  lifetime regardless of which route (`home`/`session`/anything else) is
- *  current, same tier `app_bottom`'s band already relies on (see
- *  `band.tsx`). The dialog mounts/unmounts (and `OverlayContent`'s
- *  `onCleanup`s fire) purely from `overlay()` going truthy/falsy — no
- *  route involved at any point. */
-export function registerOverlay(api: TuiPluginApi, store: LiveStore): void {
-  registeredApi = api;
-  api.slots.register({
-    order: 50,
-    slots: {
-      app: (_ctx: Readonly<TuiSlotContext>) => (
-        <Show when={overlay()}>
-          {(state: () => OverlayState) => (
-            <api.ui.Dialog size={state().size} onClose={closeOverlay}>
-              <OverlayContent api={api} store={store} runId={state().runId} />
-            </api.ui.Dialog>
-          )}
-        </Show>
-      ),
-    },
-  });
-}
-
-export type { RunBinding };
+export type { PickerEntry, RunBinding };

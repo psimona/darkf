@@ -1,58 +1,50 @@
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui";
+import { Plugin } from "@opencode/plugin/tui";
 import { registerBand } from "./band.tsx";
-import type { RunBinding } from "./locate.ts";
-import { openOverlay, registerOverlay } from "./overlay.tsx";
+import { initOverlay, openOverlay } from "./overlay.tsx";
 import { registerSidebar } from "./sidebar.tsx";
 import { startStore } from "./store.ts";
 import { registerPromptToggle } from "./toggle.tsx";
 
-const tui: TuiPlugin = async (api) => {
-  const directory = () => api.state.path.directory;
-
-  // Fires once per run, the instant it's first observed — including a run
-  // with no session bound (the `home`-screen case; see spec:
-  // docs/specs/_built/opencode-overlay-dialog/spec.md). Unconditional auto-open
-  // either way: a darkf-only view beats no view when there's no chat to
-  // replace, and `PlanGraph`/`SupervisorPanel` degrade on their own when
-  // `supervisor` is absent. `openOverlay` never navigates, so this never
-  // disturbs whatever route is current when a run starts.
-  const onNewRun = (binding: RunBinding): void => {
-    openOverlay(binding.runId);
-  };
-
-  const store = startStore(api, directory, onNewRun);
-
-  registerBand(api, store);
-  registerSidebar(api, store);
-  registerOverlay(api, store);
-  registerPromptToggle(api, store);
-
-  api.keymap.registerLayer({
-    mode: "base",
-    commands: [
-      {
-        name: "darkf.open",
-        title: "Open darkf plan view",
-        category: "darkf",
-        namespace: "palette",
-        slashName: "darkf",
-        run() {
-          openOverlay();
-        },
-      },
-    ],
-  });
-};
-
-// The installed opencode CLI validates every plugin module's default export
-// against a generic {id, setup} shape before it even looks at `tui` — the
-// published @opencode-ai/plugin types don't reflect this, so `setup` is a
-// no-op here purely to satisfy that runtime check; `tui` is what's actually
-// invoked for TUI activation.
-const plugin: TuiPluginModule & { id: string; setup: () => Promise<void> } = {
+export default Plugin.define({
   id: "darkf.visualizer",
-  setup: async () => {},
-  tui,
-};
+  async setup(context) {
+    // The location this TUI instance opened. `context.location` is optional in
+    // the type; the location data cache's default is the same directory.
+    const directory = () =>
+      context.location?.directory ?? context.data.location.default().directory;
 
-export default plugin;
+    // Fires once per run, the instant it's first observed — including a run
+    // with no session bound (the `home`-screen case; see spec:
+    // docs/specs/_built/opencode-overlay-dialog/spec.md). Unconditional auto-open
+    // either way: a darkf-only view beats no view when there's no chat to
+    // replace, and `PlanGraph`/`SupervisorPanel` degrade on their own when
+    // `supervisor` is absent. Opening is a host dialog, so it never disturbs
+    // whatever route is current when a run starts.
+    const { store, dispose } = startStore(context, directory, (binding) => {
+      openOverlay(binding.runId);
+    });
+
+    initOverlay(context, store);
+    registerBand(context, store);
+    registerSidebar(context, store);
+    registerPromptToggle(context, store);
+
+    context.keymap.layer(() => ({
+      mode: "global",
+      commands: [
+        {
+          id: "darkf.open",
+          title: "Open darkf plan view",
+          group: "darkf",
+          palette: true,
+          slash: { name: "darkf" },
+          run() {
+            openOverlay();
+          },
+        },
+      ],
+    }));
+
+    return dispose;
+  },
+});

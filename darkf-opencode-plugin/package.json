@@ -5,22 +5,28 @@
   "license": "MIT",
   "type": "module",
   "main": "src/tui.tsx",
+  "exports": {
+    "./tui": "./src/tui.tsx"
+  },
   "dependencies": {
     "@psimona/darkf": "file:../darkf"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.19.5",
+    "@opencode/plugin": "2.3.2",
+    "@opencode/theme": "2.3.2",
     "@opentui/core": "^0.9.1",
     "@opentui/solid": "^0.9.1",
+    "bun-types": "^1.4.4",
     "solid-js": "1.9.12"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.19.5",
-    "@opentui/core": ">=0.9.0",
-    "@opentui/solid": ">=0.9.0",
-    "solid-js": "1.9.12"
+    "@opencode/plugin": ">=2.3.0",
+    "@opencode/theme": ">=2.3.0",
+    "@opentui/core": ">=0.8.4",
+    "@opentui/solid": ">=0.8.4",
+    "solid-js": ">=1.9.0"
   },
   "engines": {
-    "opencode": ">=1.19.5"
+    "opencode": ">=2.3.0"
   }
 }
