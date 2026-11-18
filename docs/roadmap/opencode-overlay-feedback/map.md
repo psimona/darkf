@@ -123,11 +123,43 @@ narrow terminals.
   session) still pends a session, same as the overlay-dialog spec's
   live checks.
   (↪ ticket: tickets/picker-all-runs.md)
+- **tabbed-overlay-views** — built, typechecked, tested clean (plugin-only:
+  five new modules — `workflows-tab.tsx`, `workflow-graph.ts`,
+  `runs-tab.tsx`, `run-view.tsx`, `run-detail.tsx` — plus `overlay.tsx`
+  rewritten to a thin `workflows`/`runs` tab container; `locate.ts`'s
+  `pickRun`/`pickerPage`/`PICKER_PAGE_SIZE`/`NEXT_PAGE` deleted, their only
+  caller gone). **Reframed 2026-11-18** by explicit user direction before
+  build, then fully grilled the same day — no longer the
+  current-run/search/journal three-tab sketch this ticket originally
+  described. Shipped shape: a `workflows` tab (catalog of workflow
+  *definitions*, expandable to each one's full state graph incl. outgoing
+  edges, edge-select as pure UI focus — default view with no active run)
+  and a `runs` tab (the `picker-all-runs` data source rendered inline with
+  its own filter box instead of `pickRun`'s native dialog; selecting a run
+  swaps to a left-workflow/right-plan-tree detail view, fixed columns with
+  a manual toggle to stack, supervisor output below; back returns to the
+  list; active runs sort to the top with a poll-tick-driven spinner, no
+  pagination). `run-session-panels` deliberately stayed out — see Open
+  tickets. Dispatched via the `dev-loop` darkf workflow (not
+  `build-backend` — this is the Bun/TS workflow repo itself, outside that
+  workflow's Gradle-only scope), run `d94b3041-616d-4379-8927-99ec6f37a3a8`,
+  8/8 plan tasks landed, one self-healed lint fix, no replan. Independently
+  re-verified post-merge: root `bun run check` (289 tests) and the plugin's
+  own `bun test` (66 tests) + `tsc --noEmit` both clean on `master`.
+  (↪ docs/specs/_built/opencode-overlay-tabs/spec.md,
+  ticket: tickets/tabbed-overlay-views.md,
+  feedback: darkf/feedback/2026-11-18-opencode-overlay-tabs.md)
 
 ## Open tickets
 
 - **run-session-panels** — blocked by: none (picker-all-runs and
-  durable-run-session-schema both shipped, see Decisions above).
+  durable-run-session-schema both shipped, see Decisions above). Grilled
+  2026-11-18 alongside `tabbed-overlay-views`: deliberately kept a
+  separate ticket rather than bundled in, since the `runs` tab's detail
+  view shipped with today's lightweight, live-only `SupervisorPanel`
+  unchanged. This slice (durable supervisor info across past runs, reopen
+  action, plus the new agent-dispatch-session panel) is a drop-in upgrade
+  to that same panel later, not a redesign of it.
 - **tiled-run-grid** — blocked by: none. New feature request (2026-11-08):
   watch multiple runs at once in a tiled grid inside the overlay. First
   grill pass locked the shape (grid in the dialog — the host contract has
@@ -149,36 +181,15 @@ narrow terminals.
   **darkf will only claim opencode-session correlation support from
   whichever version this check confirms upward — not from "the PR
   merged" alone.**
-- **tabbed-overlay-views** — blocked by: none (session-binding-loss and
-  compact-expanded-sizing both shipped, see Decisions above). **Reframed
-  2026-11-18** by explicit user direction — no longer the
-  current-run/search/journal three-tab sketch. New shape: a `workflows`
-  tab (catalog of workflow *definitions*, expandable to each one's full
-  state graph incl. outgoing edges — default view with no active run) and
-  a `runs` tab (searchable all-runs list, date + title; selecting a run
-  swaps to a left-workflow/right-plan-tree detail view with a path back to
-  the list; active runs sort to the top of the list with a spinner).
-  All seven open questions this reframing raised (workflow discovery,
-  edge-select semantics, detail-view split layout, run "title", search
-  scope, spinner mechanics, paging), plus the one residual question found
-  while writing them up (whether `run-session-panels` belongs in the
-  detail view — kept separate, its own ticket, unchanged scope), were
-  resolved by a second grill pass the same day — see
-  `docs/specs/opencode-overlay-tabs/spec.md`'s Decisions. No open
-  questions remain; ready to build. Today's shipped `workflow`/`tasks`
-  strip (`task-list-json` slice) and `pickRun`'s native-dialog picker are
-  both superseded by this shape, not kept alongside it.
-
 ## Not yet specified (fog)
 
-- Whether `TuiDialogStack.replace` truly stacks (pushing a second dialog,
-  e.g. a search picker, on top of the plan dialog, `depth` incrementing) or
-  always replaces the single top layer (a second `replace` call clobbering
-  the first). The type contract's `depth`/`open` fields are consistent with
-  either reading. Matters for **tabbed-overlay-views** (does the "search
-  other sessions" tab need its own nested dialog, or does it render inline
-  inside the one already-open plan dialog); doesn't block
-  **session-binding-loss**, which only ever opens one dialog at a time.
+- ~~Whether `TuiDialogStack.replace` truly stacks~~ — moot as of
+  **tabbed-overlay-views** (2026-11-18): the `runs` tab renders its run
+  list and detail view as inline content inside the one tab-container
+  dialog, never a second stacked dialog, so the question this fog item
+  asked never needed answering on the ground. Still genuinely unresolved
+  from the type contract alone, if a future feature ever does want a
+  second dialog.
 - ~~Whether `TuiPluginApi.renderer`/`CliRenderer` exposes a terminal width
   queryable at render time~~ — resolved 2026-11-08 from the installed
   type surface: yes (`CliRenderer.width`/`height` public, plus a `RESIZE`

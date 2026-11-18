@@ -76,9 +76,12 @@ coding-agent harness either one was.
   deferred per the user's own call ("later analysis for other harnesses").
   The `harness` field's shape should not need to change to add one later,
   but no detection logic for one is built now.
-- The tab-container UI this picker eventually moves into
-  (`docs/specs/opencode-overlay-tabs/spec.md`) — this spec's picker works
-  standalone in the current single-view overlay.
+- ~~The tab-container UI this picker eventually moves into~~ — done: the
+  `runs` tab (`docs/specs/_built/opencode-overlay-tabs/spec.md`, shipped
+  2026-11-18) is now that UI. `pickRun`'s native-dialog picker this non-goal
+  described is retired; the `runs` tab's `runs-tab.tsx` is this spec's
+  picker design (unfiltered `listEntries`, `(isActive, startedAt)` sort,
+  active/inactive marker) rendered inline instead.
 - Pruning/retention of old registry entries — flagged as an open question
   below, not solved here.
 

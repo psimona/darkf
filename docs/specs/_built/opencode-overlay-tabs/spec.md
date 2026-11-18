@@ -1,4 +1,4 @@
-# darkf-opencode-plugin: workflows + runs overlay (DRAFT — grilled, ready to build)
+# darkf-opencode-plugin: workflows + runs overlay (IMPLEMENTED)
 
 Roadmap: `docs/roadmap/opencode-overlay-feedback/map.md`,
 ticket `tickets/tabbed-overlay-views.md`.
