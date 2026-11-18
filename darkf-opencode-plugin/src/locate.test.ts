@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PICKER_PAGE_SIZE, type PickerEntry, pickerOrder, pickerPage } from "./locate.ts";
+import { type PickerEntry, pickerOrder } from "./locate.ts";
 
 function mk(runId: string, startedAt: number, active: boolean): PickerEntry {
   return {
@@ -40,33 +40,5 @@ describe("pickerOrder", () => {
     const input = [mk("a", 1, false), mk("b", 2, true)];
     pickerOrder(input);
     expect(input.map((e) => e.entry.runId)).toEqual(["a", "b"]);
-  });
-});
-
-describe("pickerPage", () => {
-  const many = Array.from({ length: PICKER_PAGE_SIZE + 1 }, (_, i) => mk(`r${i}`, i, false));
-
-  test("page 0 slices one page and reports more", () => {
-    const { rows, hasMore } = pickerPage(many, 0);
-    expect(rows).toHaveLength(PICKER_PAGE_SIZE);
-    expect(hasMore).toBe(true);
-  });
-
-  test("last partial page reports no more", () => {
-    const { rows, hasMore } = pickerPage(many, 1);
-    expect(rows).toHaveLength(1);
-    expect(hasMore).toBe(false);
-  });
-
-  test("exactly one page reports no more", () => {
-    const { rows, hasMore } = pickerPage(many.slice(0, PICKER_PAGE_SIZE), 0);
-    expect(rows).toHaveLength(PICKER_PAGE_SIZE);
-    expect(hasMore).toBe(false);
-  });
-
-  test("empty list", () => {
-    const { rows, hasMore } = pickerPage([], 0);
-    expect(rows).toHaveLength(0);
-    expect(hasMore).toBe(false);
   });
 });

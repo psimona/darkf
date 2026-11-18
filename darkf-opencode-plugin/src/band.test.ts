@@ -11,6 +11,7 @@ function storeWith(views: PlanView[], picker: PickerEntry[]): LiveStore {
     taskViews: () => new Map<string, TaskListView>(),
     pickerCandidates: () => picker,
     bindingFor: () => undefined,
+    tick: () => 0,
   };
 }
 

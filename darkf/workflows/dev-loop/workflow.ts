@@ -99,7 +99,7 @@ export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
 const RUN_DATE = "2026-11-18";
-const FEATURE = "output-validation";
+const FEATURE = "opencode-overlay-tabs";
 
 export const workflow: WorkflowDef = {
   initial: "Begin",

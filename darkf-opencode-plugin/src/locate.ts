@@ -63,8 +63,6 @@ export interface PickerEntry {
   active: boolean;
 }
 
-export const PICKER_PAGE_SIZE = 50;
-
 /** Active runs first, then most-recent-first within each group — an active
  *  run must never rank below a just-finished one just because its last
  *  event is older (see docs/specs/opencode-search-candidates/spec.md).
@@ -73,18 +71,6 @@ export function pickerOrder(entries: PickerEntry[]): PickerEntry[] {
   return [...entries].sort((a, b) =>
     a.active !== b.active ? (a.active ? -1 : 1) : b.entry.startedAt - a.entry.startedAt,
   );
-}
-
-/** One page of an already-ordered list, plus whether a `→ more…` row
- *  applies. Only bounds display — `listEntries` still returns everything,
- *  so no historical data is lost, just how far back one page shows. */
-export function pickerPage(
-  ordered: PickerEntry[],
-  page: number,
-): { rows: PickerEntry[]; hasMore: boolean } {
-  const start = page * PICKER_PAGE_SIZE;
-  const rows = ordered.slice(start, start + PICKER_PAGE_SIZE);
-  return { rows, hasMore: ordered.length > start + rows.length };
 }
 
 export function bindingFor(runId: string): RunBinding | undefined {

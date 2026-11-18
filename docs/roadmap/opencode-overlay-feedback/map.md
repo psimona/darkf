@@ -150,15 +150,24 @@ narrow terminals.
   whichever version this check confirms upward — not from "the PR
   merged" alone.**
 - **tabbed-overlay-views** — blocked by: none (session-binding-loss and
-  compact-expanded-sizing both shipped, see Decisions above). Draft spec:
-  `docs/specs/opencode-overlay-tabs/spec.md`. Partially superseded on the
-  ground: the `task-list-json` slice already shipped a two-tab strip in
-  `overlay.tsx` (`workflow` default + `tasks`, `TabBar`), so the spec's
-  tab-container ask is met — the ticket's remaining scope is the
-  search-other-sessions tab and the full-journal view (no journal-log
-  renderer exists in the plugin yet). The spec also needs its sizing
-  reference updated: expanded mode is the same tabbed UI in a bigger
-  dialog, not "everything at once without tabs".
+  compact-expanded-sizing both shipped, see Decisions above). **Reframed
+  2026-11-18** by explicit user direction — no longer the
+  current-run/search/journal three-tab sketch. New shape: a `workflows`
+  tab (catalog of workflow *definitions*, expandable to each one's full
+  state graph incl. outgoing edges — default view with no active run) and
+  a `runs` tab (searchable all-runs list, date + title; selecting a run
+  swaps to a left-workflow/right-plan-tree detail view with a path back to
+  the list; active runs sort to the top of the list with a spinner).
+  All seven open questions this reframing raised (workflow discovery,
+  edge-select semantics, detail-view split layout, run "title", search
+  scope, spinner mechanics, paging), plus the one residual question found
+  while writing them up (whether `run-session-panels` belongs in the
+  detail view — kept separate, its own ticket, unchanged scope), were
+  resolved by a second grill pass the same day — see
+  `docs/specs/opencode-overlay-tabs/spec.md`'s Decisions. No open
+  questions remain; ready to build. Today's shipped `workflow`/`tasks`
+  strip (`task-list-json` slice) and `pickRun`'s native-dialog picker are
+  both superseded by this shape, not kept alongside it.
 
 ## Not yet specified (fog)
 

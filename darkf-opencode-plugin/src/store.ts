@@ -23,10 +23,12 @@ const POLL_MS = 1000;
 // change at runtime, and re-importing on every poll tick would be wasted
 // work. `null` means "tried once, failed" (missing file, bad module shape,
 // etc.) so a broken workflowDir isn't retried every tick either; it degrades
-// the same way an absent `workflowDir` does (see digest.ts).
+// the same way an absent `workflowDir` does (see digest.ts). Shared with the
+// workflows tab's catalog (workflows-tab.tsx), whose per-entry `import()`
+// this is — one loader, one cache, both consumers.
 const workflowCache = new Map<string, WorkflowDef | null>();
 
-async function loadWorkflowCached(
+export async function loadWorkflowCached(
   workflowDir: string | undefined,
 ): Promise<WorkflowDef | undefined> {
   if (workflowDir === undefined) return undefined;
@@ -58,6 +60,10 @@ export interface LiveStore {
    *  spec.md). */
   pickerCandidates: () => PickerEntry[];
   bindingFor: (runId: string) => RunBinding | undefined;
+  /** Monotonic poll counter: +1 once per `POLL_MS` interval tick, nothing
+   *  else. The runs tab derives its spinner frame from it (r14) — the frame
+   *  advances exactly when this loop ticks, so no second timer exists. */
+  tick: () => number;
 }
 
 export interface LiveStoreHandle {
@@ -81,6 +87,10 @@ export function startStore(
   const [views, setViews] = createSignal<ReadonlyMap<string, PlanView>>(new Map());
   const [taskViews, setTaskViews] = createSignal<ReadonlyMap<string, TaskListView>>(new Map());
   const [picker, setPicker] = createSignal<PickerEntry[]>([]);
+  // The spinner's clock (r14): incremented only by the interval below, so
+  // watcher-triggered `refresh()` calls can't spin the glyph faster than
+  // one frame per second.
+  const [tick, setTick] = createSignal(0);
   const watchers = new Map<string, FSWatcher>();
   const taskWatchers = new Map<string, FSWatcher>();
   // Past runs' journals never change, and there can be far more of them
@@ -206,7 +216,10 @@ export function startStore(
   }
 
   void refresh();
-  const interval = setInterval(() => void refresh(), POLL_MS);
+  const interval = setInterval(() => {
+    setTick((t) => t + 1);
+    void refresh();
+  }, POLL_MS);
   const dispose = (): void => {
     clearInterval(interval);
     for (const watcher of watchers.values()) watcher.close();
@@ -216,7 +229,7 @@ export function startStore(
   };
 
   return {
-    store: { views, taskViews, pickerCandidates: picker, bindingFor },
+    store: { views, taskViews, pickerCandidates: picker, bindingFor, tick },
     dispose,
   };
 }

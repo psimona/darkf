@@ -15,8 +15,8 @@ function runIdForSession(store: LiveStore, sessionID: string): string | undefine
  *  used the dedicated `home_prompt_right`/`session_prompt_right` slots,
  *  which V2's slot tree no longer publishes). Opens straight to this
  *  session's bound run when it has one, mirroring auto-open; otherwise
- *  behaves like the `darkf.open` command (run picker if ambiguous). Opening
- *  never navigates — see `openOverlay`. */
+ *  behaves like the `darkf.open` command — the tab container, `workflows`
+ *  tab by default. Opening never navigates — see `openOverlay`. */
 export function registerPromptToggle(context: Plugin.Context, store: LiveStore): void {
   context.ui.slot({
     append: "prompt.footer",

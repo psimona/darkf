@@ -71,11 +71,12 @@ handed out, that `Record` hasn't closed out yet" — so a crash between the
 two is visible as a stuck `in-progress` row, not a silently lost item.
 
 This project-level `tasks.json` is the workflow's own durable, committed
-queue. It is not the file the OpenCode plugin's tasks tab renders. That tab
-reads `.darkf/run/<runId>/tasks.json`, colocated with the run's journal.
-If you want the tab, have `Record` write a copy there too — `info.runId`
-carries the run id. The plugin is experimental: bundled in this repo, no
-public release.
+queue. It is not the file the OpenCode plugin renders. The plugin's runs
+tab reads `.darkf/run/<runId>/tasks.json`, colocated with the run's
+journal, and shows it as the run detail view's task pane once the file
+exists. If you want that pane, have `Record` write a copy there too —
+`info.runId` carries the run id. The plugin is experimental: bundled in
+this repo, no public release.
 
 ```ts
 // scripts/next.ts

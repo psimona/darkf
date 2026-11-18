@@ -133,12 +133,12 @@ function resolveWorkflowDir(ref: string): string {
   process.exit(1);
 }
 
-interface WorkflowListing {
+export interface WorkflowListing {
   name: string;
   source: "workspace" | "built-in";
 }
 
-function listWorkflows(): WorkflowListing[] {
+export function listWorkflows(): WorkflowListing[] {
   const roots: Array<[string, WorkflowListing["source"]]> = [
     [resolve(process.cwd(), "darkf"), "workspace"],
     [resolve(selfRoot(), "workflows"), "built-in"],
@@ -1151,4 +1151,8 @@ async function main(): Promise<void> {
   await runCmd(resolveWorkflowDir(cmd ?? "."), undefined);
 }
 
-main();
+// Dispatch only when this file is the process entry point — the `darkf` bin,
+// or the spawned `__worker` (startCmd spawns this same file directly). The
+// package public surface (src/exports.ts) re-exports `listWorkflows` from
+// here; importing it must not execute the CLI against the host's own argv.
+if (import.meta.main) main();
