@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { WorkflowValidationError } from "./graph.ts";
 
 // What a leaf node's dispatch produces when it succeeds. This is also the
@@ -18,17 +19,20 @@ export interface NodeResult {
   agentSessionId?: string;
 }
 
+// Same shape as the NodeResult interface above, one level of runtime
+// checking added. Non-strict on purpose: extra fields pass, the same as the
+// hand-rolled check this replaced. One deliberate behavior change: an array
+// now fails, where the hand-rolled check let it through
+// (docs/specs/output-validation/spec.md, "Extending `isNodeResult` to the
+// same pattern").
+const NodeResultSchema = z.object({
+  event: z.string().optional(),
+  output: z.unknown().optional(),
+  agentSessionId: z.string().optional(),
+});
+
 export function isNodeResult(value: unknown): value is NodeResult {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if ("event" in v && v.event !== undefined && typeof v.event !== "string") return false;
-  if (
-    "agentSessionId" in v &&
-    v.agentSessionId !== undefined &&
-    typeof v.agentSessionId !== "string"
-  )
-    return false;
-  return true;
+  return NodeResultSchema.safeParse(value).success;
 }
 
 // Sentinel target meaning "the whole workflow completed its work". Renders
@@ -69,6 +73,11 @@ export interface AgentStateDef extends BaseLeafDef {
   type: "agent";
   prompt: string;
   agent?: Record<string, unknown>;
+  outputType?: OutputSchema; // checks result.output, before `validate` runs
+}
+
+export interface OutputSchema {
+  safeParse(value: unknown): { success: true } | { success: false; message: string };
 }
 
 export interface ScriptStateDef extends BaseLeafDef {

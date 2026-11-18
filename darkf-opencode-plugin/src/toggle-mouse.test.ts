@@ -20,7 +20,6 @@ describe("df toggle opens on mouseup", () => {
 
     const events: string[] = [];
     let open = false;
-    let tab: BoxRenderable | undefined;
     let backdrop: BoxRenderable | undefined;
 
     backdrop = new BoxRenderable(renderer, {
@@ -29,7 +28,7 @@ describe("df toggle opens on mouseup", () => {
       backgroundColor: RGBA.fromInts(0, 0, 0, 150),
       onMouseUp: () => events.push("closed"),
     });
-    tab = new BoxRenderable(renderer, {
+    const tab = new BoxRenderable(renderer, {
       width: 6,
       height: 1,
       backgroundColor: "blue",

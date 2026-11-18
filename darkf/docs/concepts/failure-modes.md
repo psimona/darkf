@@ -57,12 +57,18 @@ of each variant's payload is required too, with one exception:
 | `usage-limit` | `detail` (required) | The provider's usage limit stayed exhausted until the leaf's wait budget ran out — `detail` is the provider line that matched. |
 | `timeout` | `elapsedMs` (required) | The dispatch outran its `timeoutMs`. |
 | `malformed-result` | none | The reply didn't parse as a well-formed `NodeResult`. |
-| `validation-failed` | `message` (required) | The state's `validate` returned a rejection string. |
+| `validation-failed` | `message` (required) | An agent leaf's `outputType` failed its shape check, or the state's `validate` returned a rejection string. |
 | `no-transition` | `state` (required), `event` (optional) | Nothing in `on`/`next` matched the returned event — `event` is absent if the result didn't carry one either. |
 | `unresolved-target` | `from` (required), `target` (required) | An edge named a state id that doesn't exist anywhere in the workflow. |
 | `duplicate-id` | `id` (required) | `buildRegistry` found two states sharing an id. |
 | `max-steps` | `steps` (required), `state` (required) | The engine-wide `maxSteps` backstop tripped. |
 | `cycle-limit` | `composite` (required), `cycles` (required) | A composite's own `maxCycles` tripped. |
+
+`validation-failed` nudges before it retries. When a result fails one
+of these checks, the engine keeps the same session alive and sends a
+short corrective prompt quoting `message` — up to three times per leaf
+visit, none costing a retry — and only then falls back to a fresh
+attempt.
 
 A runner that throws, times out, returns something malformed, or fails
 its state's `validate` hook produces a crash. It never produces a
@@ -95,6 +101,12 @@ attempt — retry count untouched — for up to `usageLimitMaxWaitMs`
 `timeoutMs`: each re-probe starts with a fresh per-attempt budget. At
 the cap the run ends in a terminal `usage-limit` crash.
 
+A second exception: the `validation-failed` nudges above consume no
+attempt either. Each nudge resumes the live session with a corrective
+prompt; only when the three-nudge budget runs out does the crash fall
+back to a fresh attempt — the attempt that finally counts against
+`retries`.
+
 **`maxCycles`** (per composite, opt-in) bounds a *multi-leaf loop*: two
 nodes handing back and forth indefinitely, never tripping any single
 dispatch's timeout or retry count. Each full pass through the composite
@@ -110,10 +122,11 @@ exhausted and the run ends with a terminal `crashed` status, or a
 bound still has budget and the *same* leaf is dispatched again from
 scratch — not resumed. The next attempt's `DispatchInfo.previousFailure`
 carries what went wrong, so an agent runner can tell the model what to
-fix. The usage-limit wait is the one exception to "from scratch": when
-the failed attempt left session evidence, the post-wait re-dispatch
-resumes that session with a short continuation prompt instead of
-replaying the full fresh prompt, so work done before the limit is kept.
+fix. Two exceptions to "from scratch", both resuming session evidence
+instead of replaying the full fresh prompt: the usage-limit wait's
+post-wait re-dispatch sends a short continuation prompt, and a
+`validation-failed` nudge sends a short corrective one quoting
+`message` — so work already done is kept.
 
 ## What you observe
 

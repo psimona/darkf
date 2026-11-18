@@ -19,6 +19,7 @@ export interface AgentStateDef {
   type: "agent";
   prompt: string;
   agent?: Record<string, unknown>;
+  outputType?: OutputSchema; // checks result.output, before `validate` runs
   on?: Record<string, string>;
   next?: string;
   retries?: number;
@@ -26,6 +27,10 @@ export interface AgentStateDef {
   usageLimitRetryMs?: number;
   usageLimitMaxWaitMs?: number;
   validate?: (result: NodeResult, handoff: NodeResult) => string | undefined;
+}
+
+export interface OutputSchema {
+  safeParse(value: unknown): { success: true } | { success: false; message: string };
 }
 
 export interface ScriptStateDef {

@@ -90,6 +90,59 @@ repair round, and the budget counts dispatches, not repairs.
 
 A script default export receives `(handoff, info)` and returns a `NodeResult`. `info.rootDir` is the invocation cwd (the target repo). Use it for every repo path so the workflow stays location-independent. `file:` resolves against `<workflow-dir>/scripts/`, not the workflow dir.
 
+## Validate agent output with `outputType`
+
+An agent state accepts an optional `outputType`: a shape check the engine runs against the node's `output` payload, before `validate`. Use it for structure ("does the output have these fields?"), keep `validate` for logic ("is the value acceptable?"). A state may set both. Type runs first, so a `validate` script can read `output.tasks[2].title` without re-checking the shape itself. `outputType` is agent-only: a script's output comes from code you already wrote and control. `validate` stays available on both agent and script states.
+
+### The `OutputSchema` interface
+
+`outputType` is typed `OutputSchema` (`src/core/types.ts`), deliberately narrow and Zod-free:
+
+```ts
+export interface OutputSchema {
+  safeParse(value: unknown): { success: true } | { success: false; message: string };
+}
+```
+
+Any schema library with a `.safeParse()` can implement it in a few lines. darkf-core's public types never reference a schema library, so your Zod version can never conflict with darkf's.
+
+### The shipped Zod adapter
+
+darkf ships exactly one adapter, for Zod (`src/kit/validation/zod.ts`):
+
+```ts
+import { zodOutputType } from "@psimona/darkf/src/kit/validation/zod.ts";
+```
+
+It joins every issue from one failed parse into a single message — `summary: Invalid input: expected string, received number; count: Invalid input: expected number, received string` — so one corrective round names every bad field, not just the first. Valibot or ArkType follow the same two-method shape; write your own, darkf ships no others.
+
+### Schema-first: the schema lives in its own file
+
+Define the Zod schema once in its own file, derive the type with `z.infer`, and export the built adapter value. The workflow definition imports only that value — never Zod directly — and stays what it already is, a plain TypeScript object:
+
+```ts
+// workflows/dev-loop/schemas/plan-output.ts
+import { z } from "zod";
+import { zodOutputType } from "@psimona/darkf/src/kit/validation/zod.ts";
+
+const PlanOutputSchema = z.object({
+  summary: z.string(),
+  tasks: z.array(z.object({ id: z.string(), title: z.string() })),
+});
+
+export type PlanOutput = z.infer<typeof PlanOutputSchema>;
+export const planOutputType = zodOutputType(PlanOutputSchema);
+```
+
+```ts
+// workflow.ts
+import { planOutputType } from "./schemas/plan-output.ts";
+
+Plan: { type: "agent", prompt: PLAN_PROMPT, outputType: planOutputType, on: { planned: "ValidatePlan" } },
+```
+
+A failed check rejects the dispatch as `validation-failed`, with the joined message as the reason. It nudges before it retries: up to three corrective nudges in the same agent session, each fed the message, then a fresh attempt against `retries`. The whole sequence is one node visit — no extra `retries` consumed, no extra `maxCycles` count — but each nudge is still a full dispatch call.
+
 ## Three-phase vs. one lane: only plan when planning earns its keep
 
 The two sections below (generate a `TaskList`, walk it with a `Dispatch`
@@ -123,7 +176,7 @@ A workflow's `prompt` strings are fixed at authoring time — they cannot read t
 If a node needs a concrete artifact derived from the spec, add a dedicated pair of steps that generates and persists it, and have every downstream node read what was persisted instead of carrying feature-specific prose in the workflow file:
 
 - **Generating** is almost always an **agent**, not a script — distilling free-form spec prose into a checklist takes judgment. Have it emit the artifact as structured JSON in its own `output`, not as a file it writes itself.
-- If the artifact is a plan or task breakdown, don't invent a one-off shape: darkf already has a shared `TaskList`/`Task`/`TaskRequirement` vocabulary (`darkf/src/core/types.ts`, `docs/specs/_built/task-list-json/spec.md`) with a hand-written, zero-dep validator (`parseTaskList`) and a canonical location the OpenCode plugin already renders live progress from. Emit that shape, not markdown prose — you get free validation, a `satisfies`-linked requirement/task map (a review checklist falls out of it: for each requirement, is there a `done` task that satisfies it?), and live status in the plugin's "tasks" tab if the runner is `opencodeRunner`.
+- If the artifact is a plan or task breakdown, don't invent a one-off shape: darkf already has a shared `TaskList`/`Task`/`TaskRequirement` vocabulary (`darkf/src/core/types.ts`) with a hand-written, zero-dep validator (`parseTaskList`) and a canonical location the OpenCode plugin already renders live progress from. Emit that shape, not markdown prose — you get free validation, a `satisfies`-linked requirement/task map (a review checklist falls out of it: for each requirement, is there a `done` task that satisfies it?), and live status in the plugin's "tasks" tab if the runner is `opencodeRunner`.
 - **Persisting** is a script, immediately after the generating agent: it validates the candidate (`parseTaskList`, or your own check for a non-TaskList artifact) and writes it to the canonical run-scoped path, `.darkf/run/<runId>/<name>.json` — a script gets `info.rootDir`/`info.runId` to compute that path; a static agent prompt cannot interpolate a per-dispatch `runId`, only a compile-time constant like `FEATURE`. Route an invalid candidate back to the generating step (bounded by the same composite's `maxCycles`, per the Bounded loops rule above), not forward to a node that can't use it.
 - Every downstream node's prompt reads the file back by finding the run's own directory — "the directory under `.darkf/run/` with the latest mtime" (there is exactly one active run per dispatch) — the same pattern a run-retrospective step already needs to locate its own journal. Never by the engine handoff, which only ever carries the immediately preceding node's result, and never by pasting the artifact's content into the prompt by hand.
 - A review checklist is exactly as spec-specific as a deliverables list, and belongs in the same generated artifact, not hand-copied into the Review prompt either — if you used a `TaskList`, it's the `requirements` array, already there.
@@ -133,7 +186,7 @@ If a node needs a concrete artifact derived from the spec, add a dedicated pair 
 
 Once you have a `TaskList` (previous section), don't hand it whole to one agent and ask it to work through every task in a single dispatch. That hides the per-task state inside one agent's own judgment about what it already finished, has no node any run status can point at ("which task is this run on right now?"), and a crash mid-plan loses track of exactly where it was.
 
-This is `item-loop-convention`'s shape (`docs/specs/item-loop-convention/spec.md` — a design, not shipped `darkf-core`/`kit` code as of this writing; hand-roll its algorithm directly in your own `scripts/` rather than importing a module that doesn't exist yet):
+This is the `item-loop-convention` shape (a design doc, not shipped `darkf-core`/`kit` code as of this writing; hand-roll its algorithm directly in your own `scripts/` rather than importing a module that doesn't exist yet):
 
 - **Dispatch** (a script) is the node that walks the plan. It reads the persisted `TaskList`, picks the first task whose status is not yet `"done"` (`"pending"` normally; an `"in-progress"` one found on resume means a crash interrupted it — dispatch that same one again, no special case needed), flips it `"in-progress"`, writes the file back, and hands that one task to the next node as its `output`. If every task is `"done"`, route to whatever follows the loop. If any are `"failed"` with none left `"pending"`, that's a distinct blocked outcome, not "exhausted."
 - The lane that follows (implement, test, fix, review — whatever one task's own work needs) operates on that single task only. It gets the task directly via the one-hop handoff from Dispatch if it's the very next node; anything further downstream (e.g. a reviewer several hops past Dispatch, past a fix-retry loop) rediscovers the right task by reading the plan file itself and finding the one still `"in-progress"` — never by relying on a value threaded through every intervening node.

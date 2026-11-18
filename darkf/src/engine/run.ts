@@ -44,6 +44,7 @@ const NUDGEABLE_KINDS = new Set<CrashReason["kind"]>([
   "handoff-missing",
   "handoff-unparseable",
   "no-transition",
+  "validation-failed",
 ]);
 function isNudgeable(reason: CrashReason): boolean {
   return NUDGEABLE_KINDS.has(reason.kind);
@@ -305,12 +306,41 @@ export async function run(opts: RunOptions): Promise<RunResult> {
           // summary as the payload and shadowed the passing verdict).
           // Routing is untouched: `resolveTarget` still reads `raw.event`,
           // and event-less results keep falling through `def.next`.
-          const result_ = def.type === "agent" && raw.event === undefined
-            ? ({ output: raw } as NodeResult)
-            : raw;
+          const result_ =
+            def.type === "agent" && raw.event === undefined ? ({ output: raw } as NodeResult) : raw;
+          // outputType (agent leaves only) — a shape check on the payload,
+          // run before `validate` so a validate script can read the output
+          // without re-checking its shape
+          // (docs/specs/output-validation/spec.md, "Order"). Same inline
+          // nudge form as no-transition below: this reason comes from a
+          // return value, not a thrown AgentFailure, so the catch block's
+          // isNudgeable path never sees it.
+          const typeResult =
+            def.type === "agent" && def.outputType
+              ? def.outputType.safeParse(result_.output)
+              : undefined;
+          if (typeResult && !typeResult.success) {
+            reason = { kind: "validation-failed", message: typeResult.message };
+            if (agentSessionId && nudgeAttempt < NUDGE_LIMIT) {
+              nudgeAttempt++;
+              continue;
+            }
+            continue attemptLoop;
+          }
           const validationError = def.validate?.(result_, handoff);
           if (validationError !== undefined) {
             reason = { kind: "validation-failed", message: validationError };
+            // A validate rejection now nudges in-session first, same inline
+            // form as the checks beside it — a return-value reason, so the
+            // catch block's isNudgeable path never sees it. Up to
+            // NUDGE_LIMIT nudges consume no retry; only the fallback to a
+            // fresh attempt does
+            // (docs/specs/output-validation/spec.md, "Where this plugs
+            // into the dispatch loop").
+            if (agentSessionId && nudgeAttempt < NUDGE_LIMIT) {
+              nudgeAttempt++;
+              continue;
+            }
             continue attemptLoop;
           }
           const resolved = resolveTarget(def, raw.event);

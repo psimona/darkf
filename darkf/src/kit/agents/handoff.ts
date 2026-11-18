@@ -36,12 +36,12 @@ export async function readHandoff(path: string): Promise<unknown> {
 }
 
 /**
- * Shared same-session repair text for the three nudgeable `CrashReason`
- * kinds (docs/specs/_built/session-nudge/spec.md). `undefined` means "don't
- * nudge" — either there's no `previousFailure`, no `agentSessionId` to
- * resume, or the failure isn't one of the three repairable kinds. Both
- * runners call this identically; only the CLI invocation that sends the
- * message differs per harness.
+ * Shared same-session repair text for the nudgeable `CrashReason` kinds
+ * (docs/specs/_built/session-nudge/spec.md, docs/specs/output-validation/spec.md).
+ * `undefined` means "don't nudge" — either there's no `previousFailure`, no
+ * `agentSessionId` to resume, or the failure isn't one of the repairable
+ * kinds. Both runners call this identically; only the CLI invocation that
+ * sends the message differs per harness.
  */
 export function nudgeMessage(info: DispatchInfo, path: string): string | undefined {
   const failure = info.previousFailure;
@@ -54,6 +54,8 @@ export function nudgeMessage(info: DispatchInfo, path: string): string | undefin
       return `The JSON at ${path} failed to parse (${failure.parseError}). Rewrite it as a single valid JSON object with the contract fields.`;
     case "no-transition":
       return `You reported event ${failure.event}; this state only routes ${validEvents}. Re-issue the handoff with a routable event.`;
+    case "validation-failed":
+      return `Your output failed validation: ${failure.message}\n\nRewrite the handoff's "output" field to fix this and write it again to ${path}.`;
     default:
       return undefined;
   }

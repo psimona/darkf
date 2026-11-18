@@ -78,7 +78,7 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
-const RUN_DATE = "2026-11-17";
+const RUN_DATE = "2026-11-18";
 const FEATURE = "output-validation";
 
 export const workflow: WorkflowDef = {
@@ -128,13 +128,15 @@ Finish with event "planned". If the contract is missing, contradictory, or too v
       // Dispatch re-enters this composite once per task — the whole
       // per-task loop is one continuous pass through BuildPhase, so this
       // one budget covers the entire plan, not one task. Sized for up to
-      // 8 tasks at up to 9 dispatches each in the worst case (Dispatch +
+      // 18 tasks at up to 9 dispatches each in the worst case (Dispatch +
       // Implement + Test + 2 Fix/Test rounds + Review + MarkDone):
-      // 8 * 9 = 72. A plan with more tasks than that needs a bigger
+      // 18 * 9 = 162. A plan with more tasks than that needs a bigger
       // number — item-loop-convention leaves this to the workflow author
       // on purpose, since WorkflowDef is static and the real task count
-      // isn't known until Plan runs.
-      maxCycles: 72,
+      // isn't known until Plan runs. (Raised from the pilot's original
+      // 72/8-task estimate after the output-validation run's real plan
+      // came out at 17 tasks and hit the old budget.)
+      maxCycles: 162,
       states: {
         Dispatch: {
           type: "script",

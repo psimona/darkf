@@ -1,6 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type DispatchInfo, type NodeResult, parseTaskList } from "@psimona/darkf/src/core/index.ts";
+import {
+  type DispatchInfo,
+  type NodeResult,
+  parseTaskList,
+} from "@psimona/darkf/src/core/index.ts";
 
 // The node that walks the plan — darkf's item-loop-convention shape
 // (docs/specs/item-loop-convention/spec.md), hand-rolled here because that

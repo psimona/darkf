@@ -1,6 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type DispatchInfo, type NodeResult, parseTaskList } from "@psimona/darkf/src/core/index.ts";
+import {
+  type DispatchInfo,
+  type NodeResult,
+  parseTaskList,
+} from "@psimona/darkf/src/core/index.ts";
 
 // Plan (agent) distills the spec into a candidate TaskList and hands it on
 // as its own output — judgment work, free-form prose in, structured JSON

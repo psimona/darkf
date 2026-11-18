@@ -580,7 +580,7 @@ test("crashes with validation-failed after exhausting retries", async () => {
   }
 });
 
-test("threads agentSessionId and previousFailure into DispatchInfo across retries", async () => {
+test("threads agentSessionId and previousFailure into DispatchInfo across nudges and retries", async () => {
   const workflow: WorkflowDef = {
     initial: "Agentic",
     states: {
@@ -611,7 +611,20 @@ test("threads agentSessionId and previousFailure into DispatchInfo across retrie
     agentSessionId: undefined,
     previousFailure: undefined,
   });
-  expect(infos[1]).toMatchObject({
+  // A validate rejection with a session nudges in-session (up to three,
+  // docs/specs/output-validation): the attempt stays 1 while previousFailure
+  // and the carried session id thread through every nudge dispatch.
+  expect(infos).toHaveLength(5); // fresh + 3 nudges + the capped fallback
+  for (const info of infos.slice(1, 4)) {
+    expect(info).toMatchObject({
+      attempt: 1,
+      agentSessionId: "sess-123",
+      previousFailure: { kind: "validation-failed", message: "expected event 'ok'" },
+    });
+  }
+  // Only after the three-nudge cap does the fresh attempt run, still
+  // threaded with the failure and the session id.
+  expect(infos[4]).toMatchObject({
     attempt: 2,
     agentSessionId: "sess-123",
     previousFailure: { kind: "validation-failed", message: "expected event 'ok'" },
@@ -1027,6 +1040,162 @@ test("a shared per-attempt deadline bounds the whole nudge sequence, not a fresh
   }
 });
 
+// --- output-validation (docs/specs/output-validation/spec.md) ---
+
+test("a failing outputType nudges in-session with the message in previousFailure, capped at three before the fresh retry", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Shaped",
+    states: {
+      Shaped: {
+        type: "agent",
+        prompt: "shape it",
+        retries: 1,
+        on: { ok: EXIT },
+        outputType: {
+          safeParse: (value) =>
+            value === "fixed"
+              ? { success: true }
+              : { success: false, message: "output: expected the string 'fixed'" },
+        },
+      },
+    },
+  };
+
+  const infos: DispatchInfo[] = [];
+  const agentRunner: AgentRunner = {
+    run: async (_id, _def, _handoff, info) => {
+      infos.push(info);
+      return infos.length <= 4
+        ? { event: "retry_me", output: "bad", agentSessionId: "sess-shape" }
+        : { event: "ok", output: "fixed" };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  expect(result.node.phase).toBe("succeeded");
+  // 1 fresh + exactly 3 nudges, all inside outer attempt 1; the 5th call is
+  // the capped fallback to a fresh attempt (retries: 1 affords exactly one).
+  expect(infos).toHaveLength(5);
+  expect(infos.slice(0, 4).map((i) => i.attempt)).toEqual([1, 1, 1, 1]);
+  expect(infos[4]).toMatchObject({ attempt: 2 });
+  // The first dispatch is not a nudge. Each nudge dispatch carries the
+  // outputType message in previousFailure — the text the corrective prompt
+  // quotes (nudgeMessage's job, covered in kit/agents/handoff.test.ts;
+  // engine/ must not import kit/ — engine-does-not-import-harness).
+  expect(infos[0]).toMatchObject({ previousFailure: undefined });
+  for (const info of infos.slice(1, 4)) {
+    expect(info).toMatchObject({
+      agentSessionId: "sess-shape",
+      previousFailure: {
+        kind: "validation-failed",
+        message: "output: expected the string 'fixed'",
+      },
+    });
+  }
+});
+
+test("a failing validate nudges in-session with the script's message in previousFailure, capped at three before the fresh retry", async () => {
+  const workflow: WorkflowDef = {
+    initial: "Picky",
+    states: {
+      Picky: {
+        type: "agent",
+        prompt: "be good",
+        retries: 1,
+        on: { ok: EXIT },
+        validate: (result) =>
+          result.output === "good" ? undefined : "output must be the string 'good'",
+      },
+    },
+  };
+
+  const infos: DispatchInfo[] = [];
+  const agentRunner: AgentRunner = {
+    run: async (_id, _def, _handoff, info) => {
+      infos.push(info);
+      return infos.length <= 4
+        ? { event: "retry_me", output: "bad", agentSessionId: "sess-picky" }
+        : { event: "ok", output: "good" };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  expect(result.node.phase).toBe("succeeded");
+  // 1 fresh + exactly 3 nudges, then the capped fresh retry — the nudge
+  // count stops at three, and no retry was spent on the nudges themselves.
+  expect(infos).toHaveLength(5);
+  expect(infos[0]).toMatchObject({ previousFailure: undefined });
+  for (const info of infos.slice(1, 4)) {
+    expect(info).toMatchObject({
+      agentSessionId: "sess-picky",
+      previousFailure: {
+        kind: "validation-failed",
+        message: "output must be the string 'good'",
+      },
+    });
+  }
+});
+
+test("regression: a validate-only leaf still rejects the same inputs, now nudging before it retries", async () => {
+  // The Compatibility contract, checked directly
+  // (docs/specs/output-validation/spec.md): a leaf with `validate` and no
+  // `outputType` — the pre-spec shape — rejects the same inputs with the
+  // same message and ends in the same `validation-failed` crash shape as
+  // before. Only the path there changed: with a session, up to three
+  // same-session nudges run before the fresh retry spends its
+  // `def.retries` slot.
+  const MESSAGE = "rejected: output was not 'good'";
+  const workflow: WorkflowDef = {
+    initial: "Picky",
+    states: {
+      Picky: {
+        type: "agent",
+        prompt: "be good",
+        retries: 1,
+        on: { ok: EXIT },
+        validate: (result) => (result.output === "good" ? undefined : MESSAGE),
+      },
+    },
+  };
+
+  const infos: DispatchInfo[] = [];
+  const agentRunner: AgentRunner = {
+    run: async (_id, _def, _handoff, info) => {
+      infos.push(info);
+      // The same bad input every time — what the leaf rejected before the
+      // feature, it must keep rejecting now.
+      return { event: "retry_me", output: "bad", agentSessionId: "sess-regress" };
+    },
+  };
+
+  const result = await run({ workflow, agentRunner, scriptRunner: noopScript });
+
+  // Same rejection as before, end to end: the identical crash shape the
+  // no-session test above asserts, reached only after the fresh retry
+  // spent the one retries: 1 slot (the nudges spent none).
+  expect(result.node.phase).toBe("crashed");
+  if (result.node.phase === "crashed") {
+    expect(result.node.reason).toEqual({ kind: "validation-failed", message: MESSAGE });
+    expect(result.node.attempt).toBe(2);
+  }
+  // Nudges before it retries: fresh + 3 in-session nudges on attempt 1,
+  // then the fresh attempt 2 — which nudges again within its own attempt
+  // (the per-attempt budget the other nudgeable kinds share) before the
+  // crash. Every dispatch after the first threads the same rejection
+  // message and the carried session id.
+  expect(infos).toHaveLength(8);
+  expect(infos.map((i) => i.attempt)).toEqual([1, 1, 1, 1, 2, 2, 2, 2]);
+  expect(infos[0]).toMatchObject({ previousFailure: undefined });
+  for (const info of infos.slice(1)) {
+    expect(info).toMatchObject({
+      agentSessionId: "sess-regress",
+      previousFailure: { kind: "validation-failed", message: MESSAGE },
+    });
+  }
+});
+
 test("a workflow routing to FAILED ends with phase 'failed', never crashed/unresolved-target", async () => {
   const workflow: WorkflowDef = {
     initial: "RunFailure",
@@ -1265,7 +1434,7 @@ test("wraps an event-less agent result as { output: payload }", async () => {
     },
   };
   const agentRunner: AgentRunner = {
-    run: async () => ({ behavior_ok: true, gaps: [] } as unknown as NodeResult),
+    run: async () => ({ behavior_ok: true, gaps: [] }) as unknown as NodeResult,
   };
 
   const result = await run({ workflow, agentRunner, scriptRunner });
@@ -1342,7 +1511,7 @@ test("script results are never coerced", async () => {
       Gate: { type: "script", file: "gate.ts", next: EXIT },
     },
   };
-  let seen: NodeResult | undefined;
+  let seen: unknown; // asserted as a raw shape, not a typed envelope
   const scriptRunner: ScriptRunner = {
     run: async (id, _def, handoff) => {
       if (id === "Prep") return { probe: 1 } as unknown as NodeResult; // no event, no output

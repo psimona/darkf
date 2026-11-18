@@ -12,16 +12,19 @@ darkf ships two packages:
   - **`core/`** — the shared vocabulary: `types.ts` (every type on this
     site's [Core types](../core-types/) page), `graph.ts`
     (registry-building and target resolution), `mermaid.ts` (render-only,
-    never parsed back), `journal.ts` (the JSONL event shape). Zero
-    runtime dependencies — nothing it depends on, by design.
+    never parsed back), `journal.ts` (the JSONL event shape). One
+    runtime dependency, Zod — `types.ts` uses it for the fixed
+    `NodeResult` envelope check; no public type references a schema
+    library.
   - **`engine/`** — the interpreter. `run.ts` is the dispatch loop:
-    retries, per-attempt timeouts, the `validate` hook, usage-limit
-    backoff, cycle-limit and
+    retries, per-attempt timeouts, the `outputType` shape check and
+    `validate` hook, usage-limit backoff, cycle-limit and
     `maxSteps` circuit breakers, unconditional journaling. Depends only
     on `core/`.
   - **`kit/`** — the workflow-authoring library: the two built-in
     `AgentRunner` adapters (`claudeCodeRunner`, `opencodeRunner`), the
-    handoff contract, and the run registry/status helpers behind
+    handoff contract, the Zod adapter for `outputType` shape checks
+    (`validation/zod.ts`), and the run registry/status helpers behind
     [CLI commands](../cli-commands/). Depends on `core/` and `engine/`.
   - **`cli/`** — the `darkf` binary itself. Depends on all three.
 - **`darkf-opencode-plugin`** — an experimental OpenCode TUI integration

@@ -126,3 +126,15 @@ test("nudgeMessage builds the no-transition repair text, naming the bad event an
   expect(msg).toContain("ok, changes_requested");
   expect(msg).toContain("routable event");
 });
+
+test("nudgeMessage builds the validation-failed repair text, quoting the message", () => {
+  const info = baseInfo({
+    agentSessionId: "sess-1",
+    previousFailure: { kind: "validation-failed", message: "tasks[2].title: required" },
+  });
+  const msg = nudgeMessage(info, "/root/.darkf/run/run-1/handoff/0001-Plan.json")!;
+  expect(msg).toContain("failed validation");
+  expect(msg).toContain("tasks[2].title: required");
+  expect(msg).toContain('Rewrite the handoff\'s "output" field');
+  expect(msg).toContain("/root/.darkf/run/run-1/handoff/0001-Plan.json");
+});

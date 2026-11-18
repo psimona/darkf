@@ -17,6 +17,7 @@ export interface AgentStateDef {
   type: "agent";
   prompt: string;
   agent?: Record<string, unknown>;
+  outputType?: OutputSchema;
   on?: Record<string, string>;
   next?: string;
   retries?: number;
@@ -38,7 +39,8 @@ export interface AgentStateDef {
 | `timeoutMs` | No | 1 hour | Ceiling on a single dispatch attempt. Exceeding it is a `timeout` crash, consuming a retry attempt like any other. |
 | `usageLimitRetryMs` | No | 30 minutes | Interval between re-probes after a dispatch fails on the provider's usage limit. The wait runs outside `timeoutMs` — each re-probe starts with a fresh per-attempt budget — and consumes no retry attempt. |
 | `usageLimitMaxWaitMs` | No | 24 hours | Total wait budget per node visit for usage-limit backoff. Spending it crashes the run with a `usage-limit` crash — see [Failure modes](../failure-modes/). |
-| `validate` | No | — | `(result, handoff) => string \| undefined`, run after the reply already parses as a well-formed `NodeResult`. Return a string to reject it — consuming a retry, exactly like a crash — or `undefined` to accept. |
+| `outputType` | No | — | Shape check on the reply's `output`, run before `validate`. Any object with a `safeParse(value)` method returning `{ success: true }` or `{ success: false, message }` — build one from a Zod schema with `zodOutputType()` (`src/kit/validation/zod.ts`) and import only that built value, never Zod itself. Agent leaves only — an agent's `output` comes from text an LLM wrote, a script's from code you already control. A failure rejects the dispatch exactly like a failed `validate` — see [Failure modes](../failure-modes/). |
+| `validate` | No | — | `(result, handoff) => string \| undefined`, run after the reply already parses as a well-formed `NodeResult` — and after `outputType`, when set. Return a string to reject it as `validation-failed`, or `undefined` to accept. A rejection nudges before it retries — up to three corrective prompts in the live session, none costing a retry — then falls back to a fresh attempt like any crash; see [Failure modes](../failure-modes/). |
 
 Only `prompt` has no default and no fallback behavior — it's the one field a workflow author must always supply. Everything else is safe to omit.
 
@@ -67,7 +69,7 @@ export interface ScriptStateDef {
 | `retries` | No | `0` | Reattempts after a crash — the function throwing, returning something malformed, or failing `validate`. Each retry calls the function again from scratch; no conversation to repair, but `DispatchInfo.previousFailure` still carries what went wrong, if the script wants to branch on it. |
 | `timeoutMs` | No | 1 hour | Same as the agent case — a hang past this is a `timeout` crash. |
 | `usageLimitRetryMs` / `usageLimitMaxWaitMs` | No | 30 min / 24 h | Present on both leaf kinds, but only a failure classified as `usage-limit` starts a wait — the built-in agent runners do that classification, and a script's own throws are `runner-error`. A script that calls an LLM itself owns its error handling. |
-| `validate` | No | — | Same contract as the agent case. Rarely needed, since a script's own result is usually correct by construction — but useful for confirming a side effect (a file actually got written) before the dispatch counts as done. |
+| `validate` | No | — | Same contract as the agent case, minus the nudging — a script has no session to resume, so a rejection spends a retry attempt directly. Rarely needed, since a script's own result is usually correct by construction — but useful for confirming a side effect (a file actually got written) before the dispatch counts as done. |
 
 `type` and `file` are the only two a script state can't do without. Both leaf kinds leave every other field optional.
 

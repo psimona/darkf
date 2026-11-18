@@ -86,9 +86,15 @@ built-in options.
   a provider usage limit (defaults: re-probe every 30 minutes, give up
   after 24 hours). A wait consumes no retry attempt and no `timeoutMs`
   budget; see [Failure modes](../../concepts/failure-modes/).
+- `outputType` checks the shape of an agent's `output` payload before
+  `validate` runs — build one from a Zod schema with `zodOutputType()`
+  (`@psimona/darkf/src/kit/validation/zod.ts`); see
+  [Node types](../../concepts/node-types/).
 - `validate(result, handoff)` runs a plain code check against a result
-  before it's accepted as `succeeded`; returning a string rejects it as a
-  crash, consuming a retry attempt exactly like a runner throwing would.
+  before it's accepted as `succeeded`; returning a string rejects it as
+  `validation-failed` — an agent leaf gets up to three corrective nudges
+  in its live session before a fresh attempt spends a retry; see
+  [Failure modes](../../concepts/failure-modes/).
 
 There is no condition-expression or YAML config layer here on purpose — see
 the repo's `PHILOSOPHY.md` for why. Anything more conditional than a plain
