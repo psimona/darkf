@@ -1,9 +1,9 @@
 import { DONE, type WorkflowDef } from "@psimona/darkf/src/core/index.ts";
 import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 
-// dev-loop — begin → PlanPhase{plan → validate} → BuildPhase{dispatch →
-// implement → test → [fix → test]* → review → mark done}* → document →
-// finish(squash) → feedback.
+// dev-loop — begin → PlanPhase{plan → validate} → (dispatch →
+// Task{implement → test → [fix → test]* → review → mark done})* →
+// document → finish(squash) → feedback.
 //
 // The darkf-on-darkf pilot, expanded after its first real run built the CLI
 // self-update feature (docs/specs/_built/self-update/). Shape ported from
@@ -30,9 +30,10 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 // it. No other git automation: the human curates what the workflow leaves
 // behind (spec archive, roadmap entry, feedback note).
 //
-// Two composites, not one, because they bound two unrelated kinds of
-// backward routing (Bounded loops rule, darkf-writing-workflows) and need
-// very different maxCycles budgets:
+// Two bounded-loop composites, not one shared "whole build" composite,
+// because they bound two unrelated kinds of backward routing (Bounded
+// loops rule, darkf-writing-workflows) and need very different maxCycles
+// budgets:
 //
 // - PlanPhase: Plan (an agent — distilling free-form spec prose into a
 //   task list takes judgment, not parsing) emits a candidate TaskList in
@@ -45,23 +46,42 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 //   compile-time constant like FEATURE. An invalid candidate loops back to
 //   Plan; budget is a small, fixed number of retry rounds.
 //
-// - BuildPhase is darkf's item-loop-convention shape
+// - Dispatch/Task is darkf's item-loop-convention shape
 //   (docs/specs/item-loop-convention/spec.md — a design, not shipped code
-//   yet, so Dispatch below hand-rolls its algorithm rather than importing
-//   it): Dispatch (a script) is the node that actually walks the plan — it
-//   picks the first "pending" task out of tasks.json, flips it
-//   "in-progress", and hands it to Implement as the one thing to build
-//   this pass. Implement → Test → (Fix → Test)* run on that one task.
-//   Review (an agent, reads tasks.json itself to find the in-progress
-//   task — it never receives it via handoff, which is several hops away
-//   by the time Review runs) verifies the task's claim against the actual
-//   working tree and never edits anything; MarkDone (a script) does the
-//   one mechanical write that follows an approval, then loops back to
-//   Dispatch for the next task. Budget scales with the plan's expected
-//   task count (see the comment on BuildPhase below), which
-//   item-loop-convention's own design explicitly leaves to the workflow
-//   author — WorkflowDef is static, built before the real item count is
-//   known.
+//   yet, so this hand-rolls the algorithm rather than importing it), with
+//   Dispatch kept OUTSIDE the Task composite on purpose. Dispatch (a
+//   script) is the node that actually walks the plan — it picks the
+//   first "pending" task out of tasks.json, flips it "in-progress", and
+//   hands it to Implement as the one thing to build this pass. Task is
+//   the per-task lane: Implement → Test → (Fix → Test)* → Review →
+//   MarkDone. Review (an agent, reads tasks.json itself to find the
+//   in-progress task — it never receives it via handoff, which is
+//   several hops away by the time Review runs) verifies the task's claim
+//   against the actual working tree and never edits anything; MarkDone
+//   (a script) does the one mechanical write that follows an approval,
+//   then routes back out to Dispatch for the next task — a flat edge
+//   across the composite boundary (buildRegistry is one flat map keyed
+//   by state id; routing doesn't care which composite either side lives
+//   in).
+//
+//   That flat edge is what makes the sizing per-task instead of
+//   per-plan: every time Dispatch (outside Task) hands off into Task
+//   again, that is a fresh entry into the composite, because the engine
+//   resets a composite's cycle counter whenever the immediately
+//   preceding dispatch's scope did not already include it
+//   (CompositeStateDef.maxCycles's doc, src/core/types.ts). Task's
+//   maxCycles below therefore budgets one task's worst case only, never
+//   multiplied by how many tasks the plan turns out to have. Dispatch
+//   itself carries no maxCycles of its own — the engine-wide maxSteps is
+//   the only backstop on the item-to-item loop, matching
+//   item-loop-convention's own Non-goals ("automatic maxCycles wiring"
+//   is explicitly out of scope: a workflow author still sizes a lane's
+//   own budget by hand, but never has to also guess the plan's total
+//   size to do it). This replaces the pilot's original shape, where
+//   Dispatch lived inside the same composite as the lane and the budget
+//   had to cover the whole plan — sized for "≤8 tasks × ≤9 dispatches,"
+//   it crashed on cycle-limit the first time a real plan came out to 17
+//   tasks, even though no single task was anywhere near a runaway.
 //
 // Every node's only shared channels are the repo itself (files, git diff,
 // the spec docs, the run's tasks.json) and the one-hop handoff — matching
@@ -93,8 +113,8 @@ export const workflow: WorkflowDef = {
     PlanPhase: {
       initial: "Plan",
       // Two dispatches per round (Plan, ValidatePlan); budget three full
-      // retry rounds. Unrelated to BuildPhase's budget — see the top
-      // comment on why these are two composites, not one.
+      // retry rounds. Unrelated to Task's budget — see the top comment
+      // on why these are two composites, not one.
       maxCycles: 6,
       states: {
         Plan: {
@@ -123,27 +143,22 @@ Finish with event "planned". If the contract is missing, contradictory, or too v
         },
       },
     },
-    BuildPhase: {
-      initial: "Dispatch",
-      // Dispatch re-enters this composite once per task — the whole
-      // per-task loop is one continuous pass through BuildPhase, so this
-      // one budget covers the entire plan, not one task. Sized for up to
-      // 18 tasks at up to 9 dispatches each in the worst case (Dispatch +
-      // Implement + Test + 2 Fix/Test rounds + Review + MarkDone):
-      // 18 * 9 = 162. A plan with more tasks than that needs a bigger
-      // number — item-loop-convention leaves this to the workflow author
-      // on purpose, since WorkflowDef is static and the real task count
-      // isn't known until Plan runs. (Raised from the pilot's original
-      // 72/8-task estimate after the output-validation run's real plan
-      // came out at 17 tasks and hit the old budget.)
-      maxCycles: 162,
+    Dispatch: {
+      type: "script",
+      file: "dispatch.ts",
+      retries: 1,
+      on: { next_item: "Implement", plan_exhausted: "Document", blocked: DONE },
+    },
+    Task: {
+      initial: "Implement",
+      // Sized for one task's worst case only (Implement + Test + 2
+      // Fix/Test rounds + Review + MarkDone = 8), with item-loop-
+      // convention's own estimateMaxCycles(n, slack=1.5) rounding: 8 *
+      // 1.5 = 12. Dispatch is deliberately outside this composite (see
+      // the top comment) so this budget resets fresh on every task,
+      // never multiplied by the plan's task count.
+      maxCycles: 12,
       states: {
-        Dispatch: {
-          type: "script",
-          file: "dispatch.ts",
-          retries: 1,
-          on: { next_item: "Implement", plan_exhausted: "Document", blocked: DONE },
-        },
         Implement: {
           type: "agent",
           agent: { model: MODEL },
