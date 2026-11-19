@@ -2,7 +2,7 @@
 import { type Plugin, usePlugin } from "@opencode/plugin/tui";
 import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { RunsTabContent } from "./run-detail.tsx";
 import type { LiveStore } from "./store.ts";
 import { ToggleTab } from "./toggle-tab.tsx";
@@ -98,9 +98,18 @@ function TabBar(props: {
  *  changes `ui.router.current()`, so a run first detected while it's open
  *  still binds to the real session (see spec:
  *  docs/specs/_built/opencode-overlay-dialog/spec.md). Escape closing is the
- *  host dialog's own behavior; the layer here only carries the tab keys. The
- *  `darkf.plan` mode push keeps those keys out of the base layer while the
- *  dialog is up. The `runs` tab's content — the list (r5) or, once a run is
+ *  host dialog's own behavior; the layer here only carries the tab keys.
+ *  `mode: "global"` (not a custom mode name) — the host's own
+ *  `keymap.tsx` only gates a layer on a custom mode string via the mode
+ *  stack's `enabled()` check, which depends on `useInteractivity()`
+ *  reporting this dialog's subtree as interactive; empirically it never
+ *  does, so a custom-mode layer registered from inside `ui.dialog.show`
+ *  content never activates (confirmed live: no bound key fired, in two
+ *  separate sessions, until switched to `"global"`). The host's own test
+ *  fixture for this exact shape (`setup-keymap/tui.tsx`'s `FixtureDialog`)
+ *  uses `mode: "global"` too — no first-party code combines a custom
+ *  `mode.push` name with dialog-hosted content. The `runs` tab's content —
+ *  the list (r5) or, once a run is
  *  selected, its detail view (r6/r7) — lives in `run-detail.tsx`'s
  *  `RunsTabContent` and renders as the `Show` fallback; the shared scrollbox
  *  stays on the `workflows` branch, because the runs side owns its scroll
@@ -108,8 +117,6 @@ function TabBar(props: {
  *  the detail view's panes scroll under a pinned header). */
 function OverlayContent(props: { store: LiveStore; runId?: string }): JSX.Element {
   const context = usePlugin();
-  const popMode = context.keymap.mode.push("darkf.plan");
-  onCleanup(popMode);
 
   const accent = context.theme.text.action.primary.base;
   const errorColor = context.theme.text.feedback.error.base;
@@ -124,7 +131,7 @@ function OverlayContent(props: { store: LiveStore; runId?: string }): JSX.Elemen
   // registration, so `setTab` must already exist. Scoped to this mount —
   // the host disposes it when the dialog closes.
   context.keymap.layer(() => ({
-    mode: "darkf.plan",
+    mode: "global",
     commands: [
       {
         id: "darkf.tab.workflows",
@@ -149,7 +156,7 @@ function OverlayContent(props: { store: LiveStore; runId?: string }): JSX.Elemen
   }));
 
   return (
-    <box flexDirection="column" height="100%" padding={1}>
+    <box flexDirection="column" height="100%" padding={1} focusable={true} focused={true}>
       <TabBar active={tab()} accent={accent} onSelect={setTab} />
       <Show
         when={tab() === "workflows"}
@@ -162,6 +169,14 @@ function OverlayContent(props: { store: LiveStore; runId?: string }): JSX.Elemen
           />
         }
       >
+        {/* `focusable={false}`: `ScrollBoxRenderable` defaults focusable
+            (`ScrollBox.d.ts`'s `defaultFocusable = true`) — left on, it
+            grabs native keyboard focus and swallows up/down for its own
+            scrolling before `WorkflowsTab`'s global-mode command layer
+            ever sees them (confirmed live: the tree's own up/down/return
+            commands never fired until this was set). `runs-tab.tsx` never
+            hit this — it owns its own scrollbox and sits next to a
+            `focused={true}` input, never a bare wrapping one. */}
         <scrollbox flexGrow={1} minHeight={0} scrollY border>
           <WorkflowsTab accent={accent} errorColor={errorColor} />
         </scrollbox>

@@ -1,7 +1,8 @@
 /** @jsxImportSource @opentui/solid */
 
 import { basename } from "node:path";
-import { createTextAttributes } from "@opentui/core";
+import { usePlugin } from "@opencode/plugin/tui";
+import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import type { RegistryEntry as RunEntry } from "@psimona/darkf";
 import { createSignal, For, Show } from "solid-js";
@@ -82,6 +83,14 @@ export function runRows(candidates: PickerEntry[], query: string): PickerEntry[]
   return pickerOrder(candidates).filter((candidate) => runMatches(candidate, query));
 }
 
+/** Keeps a cursor index inside `[0, length - 1]`, or `0` for an empty list —
+ *  the filter can shrink `rows()` out from under a cursor the user already
+ *  moved, so every read clamps instead of trusting the stored index. */
+export function clampIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
 /** The `runs` tab's default content (r5): the filter input, then every run
  *  — spinner glyph on active rows (r14), `○` not — as `date title` rows in
  *  a scrollbox of its own. The input must stay put while the list scrolls,
@@ -94,16 +103,63 @@ export function runRows(candidates: PickerEntry[], query: string): PickerEntry[]
  *  selection in `run-detail.tsx` — decides what that shows (r6). */
 export function RunsTab(props: {
   store: LiveStore;
+  accent: RGBA;
   onSelect: (runId: string) => void;
 }): JSX.Element {
+  const context = usePlugin();
   const [filter, setFilter] = createSignal("");
+  const [cursor, setCursor] = createSignal(0);
   const rows = () => runRows(props.store.pickerCandidates(), filter());
   const anyRuns = () => props.store.pickerCandidates().length > 0;
+  // The filter can shrink the list out from under a cursor the user already
+  // moved past the new end — every read clamps rather than trusting the
+  // stored index (`clampIndex`), so this never indexes past `rows()`.
+  const activeIndex = () => clampIndex(cursor(), rows().length);
+
+  const openActive = (): void => {
+    const row = rows()[activeIndex()];
+    if (row) props.onSelect(row.entry.runId);
+  };
+
+  // Up/down move the highlighted row; return opens it. Scoped to this
+  // mount — only live while the list (not the detail view or the workflows
+  // tab) is showing, same "layer disposes with its owner" shape
+  // `OverlayContent`'s own `keymap.layer` call already relies on.
+  // `mode: "global"`, not a custom mode name — see overlay.tsx's
+  // `OverlayContent` doc comment for why a custom mode never activates
+  // from inside `ui.dialog.show` content.
+  context.keymap.layer(() => ({
+    mode: "global",
+    commands: [
+      {
+        id: "darkf.runs.up",
+        title: "Previous run",
+        group: "darkf",
+        bind: "up",
+        run: () => setCursor((i) => clampIndex(i - 1, rows().length)),
+      },
+      {
+        id: "darkf.runs.down",
+        title: "Next run",
+        group: "darkf",
+        bind: "down",
+        run: () => setCursor((i) => clampIndex(i + 1, rows().length)),
+      },
+      {
+        id: "darkf.runs.open",
+        title: "Open run",
+        group: "darkf",
+        bind: "return",
+        run: openActive,
+      },
+    ],
+    bindings: ["darkf.runs.up", "darkf.runs.down", "darkf.runs.open"],
+  }));
 
   return (
     <box flexDirection="column" flexGrow={1} minHeight={0}>
-      <input placeholder={FILTER_PLACEHOLDER} onInput={setFilter} />
-      <scrollbox flexGrow={1} minHeight={0} scrollY border>
+      <input placeholder={FILTER_PLACEHOLDER} focused={true} onInput={setFilter} />
+      <scrollbox flexGrow={1} minHeight={0} scrollY scrollX border>
         <Show
           when={rows().length > 0}
           fallback={
@@ -111,15 +167,28 @@ export function RunsTab(props: {
           }
         >
           <For each={rows()}>
-            {(candidate) => (
-              <box flexDirection="row" onMouseDown={() => props.onSelect(candidate.entry.runId)}>
-                <text attributes={DIM}>
-                  {candidate.active ? spinnerFrame(props.store.tick()) : "○"}{" "}
-                  {formatDate(candidate.entry.startedAt)}
-                </text>
-                <text> {runTitle(candidate.entry)}</text>
-              </box>
-            )}
+            {(candidate, i) => {
+              const active = () => i() === activeIndex();
+              return (
+                <box
+                  flexDirection="row"
+                  flexShrink={0}
+                  onMouseDown={() => {
+                    setCursor(i());
+                    props.onSelect(candidate.entry.runId);
+                  }}
+                >
+                  <text attributes={DIM} fg={active() ? props.accent : undefined} wrapMode="none">
+                    {candidate.active ? spinnerFrame(props.store.tick()) : "○"}{" "}
+                    {formatDate(candidate.entry.startedAt)}
+                  </text>
+                  <text fg={active() ? props.accent : undefined} wrapMode="none">
+                    {" "}
+                    {runTitle(candidate.entry)}
+                  </text>
+                </box>
+              );
+            }}
           </For>
         </Show>
       </scrollbox>

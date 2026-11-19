@@ -165,7 +165,7 @@ export function RunsTabContent(props: {
   return (
     <Show
       when={selectedRunId()}
-      fallback={<RunsTab store={props.store} onSelect={setSelectedRunId} />}
+      fallback={<RunsTab store={props.store} accent={props.accent} onSelect={setSelectedRunId} />}
     >
       {(runId: () => string) => (
         <RunDetail

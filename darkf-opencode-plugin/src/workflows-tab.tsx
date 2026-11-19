@@ -1,10 +1,11 @@
 /** @jsxImportSource @opentui/solid */
 
 import { dirname, join, resolve } from "node:path";
+import { usePlugin } from "@opencode/plugin/tui";
 import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { listWorkflows, type WorkflowListing } from "@psimona/darkf";
-import { createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { loadWorkflowCached } from "./store.ts";
 import {
   buildWorkflowGraph,
@@ -129,6 +130,127 @@ export function edgeFocus(
   };
 }
 
+/** A workflow's own collapsed row — toggling loads it; the tree underneath
+ *  is whatever `collectRows` adds once loaded and open. */
+export interface EntryRow {
+  kind: "entry";
+  path: string;
+  entry: CatalogEntry;
+}
+
+/** One state row — leaf or composite. Leaves are expandable too, now that
+ *  edges default to collapsed: `node.edges.length > 0` is what makes a leaf
+ *  togglable, same condition `collectNodeRows` uses to decide whether its
+ *  edges contribute rows at all. */
+export interface NodeRow {
+  kind: "node";
+  path: string;
+  entry: CatalogEntry;
+  node: WorkflowGraphNode;
+  branch: string;
+  isInitial: boolean;
+}
+
+/** One outgoing edge, only present while its leaf is open. `index` makes
+ *  the path unique among a leaf's own edges — edges aren't addressed by
+ *  `buildPathIndex` (only state ids are), so there's no id to reuse. */
+export interface EdgeRow {
+  kind: "edge";
+  path: string;
+  entry: CatalogEntry;
+  edge: WorkflowGraphEdge;
+  branch: string;
+}
+
+export type Row = EntryRow | NodeRow | EdgeRow;
+
+/** A state's own row plus whatever's visible underneath it: a composite's
+ *  children while open, a leaf's edges while open (edges default closed —
+ *  `isOpen` gates both the same way `toggleOpen` already gates composite
+ *  children). Mirrors the old recursive `renderNode` walk, minus the JSX —
+ *  one list both renders and, via its order, drives keyboard up/down. */
+function collectNodeRows(
+  entry: CatalogEntry,
+  node: WorkflowGraphNode,
+  path: string,
+  prefix: string,
+  isLast: boolean,
+  isInitial: boolean,
+  isOpen: (path: string) => boolean,
+): Row[] {
+  const branch = prefix + (isLast ? "└── " : "├── ");
+  const childPrefix = prefix + (isLast ? "    " : "│   ");
+  const row: NodeRow = { kind: "node", path, entry, node, branch, isInitial };
+  if (node.kind === "composite") {
+    const children = node.children ?? [];
+    if (!isOpen(path)) return [row];
+    return [
+      row,
+      ...children.flatMap((child, i) =>
+        collectNodeRows(
+          entry,
+          child,
+          `${path}/${child.id}`,
+          childPrefix,
+          i === children.length - 1,
+          child.id === node.initial,
+          isOpen,
+        ),
+      ),
+    ];
+  }
+  if (node.edges.length === 0 || !isOpen(path)) return [row];
+  const edgeRows: EdgeRow[] = node.edges.map((edge, i) => ({
+    kind: "edge",
+    path: `${path}/edge-${i}`,
+    entry,
+    edge,
+    branch: childPrefix,
+  }));
+  return [row, ...edgeRows];
+}
+
+/** The tab's whole navigable surface, one flat list spanning every catalog
+ *  entry in order — a single keyboard cursor can walk from one workflow's
+ *  nodes straight into the next entry's row. Loading/error states aren't
+ *  rows here (nothing to select while an entry is loading or broken); the
+ *  entry row's own render checks those same `graphFor`/error lookups to
+ *  show the decoration, same as before this list existed. */
+export function collectRows(
+  catalog: readonly CatalogEntry[],
+  isOpen: (path: string) => boolean,
+  graphFor: (key: string) => WorkflowGraph | undefined,
+): Row[] {
+  return catalog.flatMap((entry): Row[] => {
+    const entryRow: EntryRow = { kind: "entry", path: entry.key, entry };
+    if (!isOpen(entry.key)) return [entryRow];
+    const graph = graphFor(entry.key);
+    if (!graph) return [entryRow];
+    return [
+      entryRow,
+      ...graph.nodes.flatMap((node, i) =>
+        collectNodeRows(
+          entry,
+          node,
+          `${entry.key}/${node.id}`,
+          "  ",
+          i === graph.nodes.length - 1,
+          node.id === graph.initial,
+          isOpen,
+        ),
+      ),
+    ];
+  });
+}
+
+/** Keeps a cursor index inside `[0, length - 1]`, or `0` for an empty list —
+ *  same clamp `runs-tab.tsx`'s own cursor uses, duplicated rather than
+ *  imported across tabs that are otherwise independent of each other. */
+function clampIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
 type LoadedEntry =
   | { state: "loading" }
   | { state: "error"; message: string }
@@ -149,6 +271,7 @@ export function WorkflowsTab(props: {
   /** Defaults to a fresh `catalogEntries()` scan. */
   catalog?: CatalogEntry[];
 }): JSX.Element {
+  const context = usePlugin();
   const catalog = props.catalog ?? catalogEntries();
   const [entries, setEntries] = createSignal<ReadonlyMap<string, LoadedEntry>>(new Map());
   // Every open path in one set — entry keys and node paths share one global
@@ -217,6 +340,7 @@ export function WorkflowsTab(props: {
 
   const toggleEntry = (entry: CatalogEntry): void => {
     toggleOpen(entry.key);
+    setCursor(entry.key);
     if (isOpen(entry.key)) loadEntry(entry);
   };
 
@@ -235,91 +359,154 @@ export function WorkflowsTab(props: {
   const targetLabel = (target: WorkflowGraphTarget): string =>
     target.kind === "state" ? target.id : target.kind;
 
-  const renderEdge = (
-    entry: CatalogEntry,
-    edge: WorkflowGraphEdge,
-    prefix: string,
-  ): JSX.Element => (
-    <box onMouseDown={() => selectEdge(entry, edge)}>
-      <text
-        fg={edge.target.kind === "failed" ? props.errorColor : undefined}
-        attributes={edge.target.kind === "failed" ? undefined : DIM}
-      >
-        {prefix}
-        {edge.event ?? "next"} → {targetLabel(edge.target)}
-      </text>
-    </box>
-  );
+  // The tab's whole flat, navigable surface (entries, nodes, and — once a
+  // leaf is open — its edges), recomputed whenever an entry loads or
+  // anything opens/closes. Keyboard up/down just walks this list; render
+  // walks it too, so the two can never disagree about what's visible.
+  const rows = createMemo(() => collectRows(catalog, isOpen, loadedGraph));
 
-  // The static twin of `OverlayContent`'s run-scoped `renderNode`: same
-  // branch connectors and expand carets, minus everything a run contributes
-  // (active dot, visits) and plus the leaf's edge rows — a definition's
-  // edges are its content, so they render whenever the leaf does. The dim
-  // `(initial)` suffix marks the state each level enters first — the tree's
-  // counterpart of mermaid's `[*] --> initial` line.
-  const renderNode = (
-    entry: CatalogEntry,
-    node: WorkflowGraphNode,
-    path: string,
-    prefix: string,
-    isLast: boolean,
-    isInitial: boolean,
-  ): JSX.Element => {
-    const focused = () => cursor() === path;
-    const branch = prefix + (isLast ? "└── " : "├── ");
-    const childPrefix = prefix + (isLast ? "    " : "│   ");
-    const glyph = node.kind === "composite" ? undefined : TYPE_ICON[node.kind];
+  const moveCursor = (delta: -1 | 1): void => {
+    const list = rows();
+    if (list.length === 0) return;
+    const index = list.findIndex((row) => row.path === cursor());
+    const next = index === -1 ? 0 : clampIndex(index + delta, list.length);
+    setCursor(list[next].path);
+  };
 
-    if (node.kind !== "composite") {
+  // Toggles an entry/composite/open-able leaf, or follows an edge's focus
+  // (r10) — the keyboard twin of each row kind's own `onMouseDown`.
+  const activateRow = (row: Row): void => {
+    if (row.kind === "entry") {
+      toggleEntry(row.entry);
+      return;
+    }
+    if (row.kind === "edge") {
+      selectEdge(row.entry, row.edge);
+      return;
+    }
+    if (row.node.kind === "composite" || row.node.edges.length > 0) toggleOpen(row.path);
+  };
+
+  // Up/down move the highlighted row across the whole flat tree; return
+  // activates whatever's under the cursor. `mode: "global"`, not a custom
+  // mode name — see overlay.tsx's `OverlayContent` doc comment for why a
+  // custom mode never activates from inside `ui.dialog.show` content.
+  context.keymap.layer(() => ({
+    mode: "global",
+    commands: [
+      {
+        id: "darkf.workflows.up",
+        title: "Previous row",
+        group: "darkf",
+        bind: "up",
+        run: () => moveCursor(-1),
+      },
+      {
+        id: "darkf.workflows.down",
+        title: "Next row",
+        group: "darkf",
+        bind: "down",
+        run: () => moveCursor(1),
+      },
+      {
+        // `space`, not `return` — `return` is globally claimed by the
+        // host's default `input.submit` binding (opencode.ai/docs/
+        // keybinds) and never reaches this layer when nothing editable
+        // has focus (confirmed live: a toast on this command's `run`
+        // never fired for `return`, while the same toast on `up`/`down`
+        // fired every time). `runs-tab.tsx` only gets away with `return`
+        // because that default is gated off specifically for a focused
+        // single-line `<input>`; nothing here is an editor at all.
+        id: "darkf.workflows.activate",
+        title: "Toggle / follow",
+        group: "darkf",
+        bind: "space",
+        run: () => {
+          const row = rows().find((candidate) => candidate.path === cursor());
+          if (row) activateRow(row);
+        },
+      },
+    ],
+    bindings: ["darkf.workflows.up", "darkf.workflows.down", "darkf.workflows.activate"],
+  }));
+
+  const renderRow = (row: Row): JSX.Element => {
+    const focused = () => cursor() === row.path;
+
+    if (row.kind === "entry") {
+      const graph = () => loadedGraph(row.entry.key);
+      const error = () => errorMessage(row.entry.key);
+      const open = () => isOpen(row.entry.key);
       return (
         <box flexDirection="column">
-          <box flexDirection="row" onMouseDown={() => setCursor(path)}>
+          <box flexDirection="row" onMouseDown={() => toggleEntry(row.entry)}>
             <text fg={focused() ? props.accent : undefined} attributes={BOLD}>
-              {branch}
-              {glyph} {node.id}
+              {open() ? "⏷ " : "▶ "}
+              {row.entry.listing.name}
             </text>
-            <Show when={isInitial}>
-              <text attributes={DIM}> (initial)</text>
-            </Show>
+            <text attributes={DIM}> ({row.entry.listing.source})</text>
           </box>
-          <For each={node.edges}>{(edge) => renderEdge(entry, edge, childPrefix)}</For>
+          {/* Three exclusive states — error, tree, or neither (= still
+              loading). Plain `when` conditions, no fallback chaining: an
+              error must not leave "loading…" up. */}
+          <Show when={open() && error() !== undefined}>
+            <text fg={props.errorColor}>
+              {"  "}
+              {error()}
+            </text>
+          </Show>
+          <Show when={open() && error() === undefined && graph() === undefined}>
+            <text attributes={DIM}>{"  "}loading…</text>
+          </Show>
         </box>
       );
     }
 
-    const expanded = () => isOpen(path);
-    const children = node.children ?? [];
-    return (
-      <box flexDirection="column">
-        <box
-          flexDirection="row"
-          onMouseDown={() => {
-            toggleOpen(path);
-            setCursor(path);
-          }}
-        >
-          <text fg={focused() ? props.accent : undefined} attributes={BOLD}>
-            {branch}
-            {expanded() ? "⏷ " : "▶ "}
-            {node.id}
-          </text>
-          <Show when={isInitial}>
-            <text attributes={DIM}> (initial)</text>
-          </Show>
-        </box>
-        <Show when={expanded()}>
-          <For each={children}>
-            {(child, i) =>
-              renderNode(
-                entry,
-                child,
-                `${path}/${child.id}`,
-                childPrefix,
-                i() === children.length - 1,
-                child.id === node.initial,
-              )
+    if (row.kind === "edge") {
+      return (
+        <box onMouseDown={() => selectEdge(row.entry, row.edge)}>
+          <text
+            fg={
+              focused()
+                ? props.accent
+                : row.edge.target.kind === "failed"
+                  ? props.errorColor
+                  : undefined
             }
-          </For>
+            attributes={focused() || row.edge.target.kind === "failed" ? undefined : DIM}
+          >
+            {row.branch}
+            {row.edge.event ?? "next"} → {targetLabel(row.edge.target)}
+          </text>
+        </box>
+      );
+    }
+
+    // Edges default collapsed (r2 follow-up): a leaf with outgoing edges
+    // gets the same expand caret a composite already has, gated by the
+    // same `isOpen`/`toggleOpen` the composite's children use — opening a
+    // leaf reveals its edges instead of children.
+    const node = row.node;
+    const expandable = node.kind === "composite" || node.edges.length > 0;
+    const expanded = () => isOpen(row.path);
+    const caret = expandable ? (expanded() ? "⏷ " : "▶ ") : "";
+    const icon = node.kind === "composite" ? "" : `${TYPE_ICON[node.kind]} `;
+    return (
+      <box
+        flexDirection="row"
+        onMouseDown={() => {
+          if (expandable) toggleOpen(row.path);
+          setCursor(row.path);
+        }}
+      >
+        <text fg={focused() ? props.accent : undefined} attributes={BOLD}>
+          {row.branch}
+          {caret}
+          {icon}
+          {node.id}
+        </text>
+        <Show when={row.isInitial}>
+          <text attributes={DIM}> (initial)</text>
         </Show>
       </box>
     );
@@ -333,53 +520,7 @@ export function WorkflowsTab(props: {
           <text attributes={DIM}>{"no workflows found — add darkf/<name>/workflow.ts"}</text>
         }
       >
-        <For each={catalog}>
-          {(entry) => {
-            const graph = () => loadedGraph(entry.key);
-            const error = () => errorMessage(entry.key);
-            return (
-              <box flexDirection="column">
-                <box flexDirection="row" onMouseDown={() => toggleEntry(entry)}>
-                  <text attributes={BOLD}>
-                    {isOpen(entry.key) ? "⏷ " : "▶ "}
-                    {entry.listing.name}
-                  </text>
-                  <text attributes={DIM}> ({entry.listing.source})</text>
-                </box>
-                <Show when={isOpen(entry.key)}>
-                  {/* Three exclusive states — error, tree, or neither (=
-                      still loading). Plain `when` conditions, no fallback
-                      chaining: an error must not leave "loading…" up. */}
-                  <Show when={error() !== undefined}>
-                    <text fg={props.errorColor}>
-                      {"  "}
-                      {error()}
-                    </text>
-                  </Show>
-                  <Show when={error() === undefined && graph() === undefined}>
-                    <text attributes={DIM}>{"  "}loading…</text>
-                  </Show>
-                  <Show when={graph()}>
-                    {(resolved: () => WorkflowGraph) => (
-                      <For each={resolved().nodes}>
-                        {(node, i) =>
-                          renderNode(
-                            entry,
-                            node,
-                            `${entry.key}/${node.id}`,
-                            "  ",
-                            i() === resolved().nodes.length - 1,
-                            node.id === resolved().initial,
-                          )
-                        }
-                      </For>
-                    )}
-                  </Show>
-                </Show>
-              </box>
-            );
-          }}
-        </For>
+        <For each={rows()}>{renderRow}</For>
       </Show>
     </box>
   );
