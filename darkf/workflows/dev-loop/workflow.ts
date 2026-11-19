@@ -98,8 +98,8 @@ import { opencodeRunner } from "@psimona/darkf/src/kit/agents/opencode.ts";
 export const agentRunner = opencodeRunner;
 
 const MODEL = "zai-coding-plan/glm-5.3-flash";
-const RUN_DATE = "2026-11-18";
-const FEATURE = "opencode-overlay-tabs";
+const RUN_DATE = "2026-11-19";
+const FEATURE = "opencode-overlay-tiles";
 
 export const workflow: WorkflowDef = {
   initial: "Begin",

@@ -2,11 +2,12 @@
 
 import { basename } from "node:path";
 import { usePlugin } from "@opencode/plugin/tui";
-import { createTextAttributes, type RGBA } from "@opentui/core";
+import { createTextAttributes } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import type { RegistryEntry as RunEntry } from "@psimona/darkf";
 import { createSignal, For, Show } from "solid-js";
 import { type PickerEntry, pickerOrder } from "./locate.ts";
+import { DIM_INVERSE, INVERSE, rowGutter } from "./row-focus.ts";
 import type { LiveStore } from "./store.ts";
 
 // The `runs` tab's list content (docs/specs/opencode-overlay-tabs/spec.md):
@@ -99,11 +100,22 @@ export function clampIndex(index: number, length: number): number {
  *  Active rows carry the ordering too (r8): `pickerOrder` puts them on top
  *  of the list. Reading the store's `tick` here is what animates the rows —
  *  each 1s poll advances the counter, and the active-row glyphs move.
- *  Clicking a row reports it through `onSelect`; the caller — the tab-local
- *  selection in `run-detail.tsx` — decides what that shows (r6). */
+ *  Clicking a row reports it through `onSelect`; the caller — the
+ *  container-held selection in `run-detail.tsx` — decides what that shows
+ *  (r6). `contentFocused` — the panel container's region focus (decision 6)
+ *  — is what now drives the input's native focus instead of a hardcoded
+ *  `true`: the filter input is the content area's own native focus holder
+ *  while the plain list is showing and the content region is current (the
+ *  region box itself stands down there — a focusable `Box` paints its
+ *  `focusedBorderColor` while a focused descendant holds input, so the
+ *  region border still shows). Gating on the region also keeps the input
+ *  out of the host's focus while any other region holds it, and while the
+ *  panel doesn't own input at all (`panel.focused`) — a hardcoded `true`
+ *  would swallow chat typing on a non-modal panel the way overlay.tsx's
+ *  root box already documents for the dialog era. */
 export function RunsTab(props: {
   store: LiveStore;
-  accent: RGBA;
+  contentFocused: boolean;
   onSelect: (runId: string) => void;
 }): JSX.Element {
   const context = usePlugin();
@@ -127,7 +139,11 @@ export function RunsTab(props: {
   // `OverlayContent`'s own `keymap.layer` call already relies on.
   // `mode: "global"`, not a custom mode name — see overlay.tsx's
   // `OverlayContent` doc comment for why a custom mode never activates
-  // from inside `ui.dialog.show` content.
+  // from inside dialog/panel-hosted content. No `tab` binding: the panel
+  // container owns the region cycle (overlay.tsx's `darkf.region.next`),
+  // and this layer participates in the order it defines by carrying only
+  // this view's own keys (spec: docs/specs/opencode-overlay-tiles/spec.md
+  // — Cross-Component Contracts, keymap-region-participation).
   context.keymap.layer(() => ({
     mode: "global",
     commands: [
@@ -158,7 +174,7 @@ export function RunsTab(props: {
 
   return (
     <box flexDirection="column" flexGrow={1} minHeight={0}>
-      <input placeholder={FILTER_PLACEHOLDER} focused={true} onInput={setFilter} />
+      <input placeholder={FILTER_PLACEHOLDER} focused={props.contentFocused} onInput={setFilter} />
       <scrollbox flexGrow={1} minHeight={0} scrollY scrollX border>
         <Show
           when={rows().length > 0}
@@ -168,6 +184,10 @@ export function RunsTab(props: {
         >
           <For each={rows()}>
             {(candidate, i) => {
+              // The list cursor is row-focus.ts's inverse band + `❯`
+              // gutter (decision 5), layered over the row's own dim/plain
+              // cells — no color, unlike the accent this row used to paint
+              // itself with.
               const active = () => i() === activeIndex();
               return (
                 <box
@@ -178,11 +198,12 @@ export function RunsTab(props: {
                     props.onSelect(candidate.entry.runId);
                   }}
                 >
-                  <text attributes={DIM} fg={active() ? props.accent : undefined} wrapMode="none">
+                  <text attributes={active() ? DIM_INVERSE : DIM} wrapMode="none">
+                    {rowGutter(active())}
                     {candidate.active ? spinnerFrame(props.store.tick()) : "○"}{" "}
                     {formatDate(candidate.entry.startedAt)}
                   </text>
-                  <text fg={active() ? props.accent : undefined} wrapMode="none">
+                  <text attributes={active() ? INVERSE : undefined} wrapMode="none">
                     {" "}
                     {runTitle(candidate.entry)}
                   </text>

@@ -33,6 +33,19 @@ narrow terminals.
   likely moved or was renamed upstream). Treat as unverified from primary
   source; **session-binding-loss**'s ticket below resolves what it can from
   the type contract plus one piece of in-repo evidence instead.
+- Re-grilled 2026-11-19, prompted by live user feedback that keyboard focus
+  is invisible in the shipped tabbed overlay (color-only cursor, no
+  traversal on the tab strip). By then the plugin had moved to
+  `@opencode/plugin@2.3.2`, whose docs describe `session.panel` — a
+  non-modal, host-sized, reactively-resizable panel that wasn't on the
+  table at the 2026-11-08 grill pass above. **tiled-run-grid**'s
+  host-primitive premise ("no split primitive, only slots plus dialogs")
+  is superseded: the resolved design (see that ticket below) migrates the
+  whole overlay off the dialog onto `session.panel`, which also supersedes
+  the host-primitive half of **session-binding-loss**'s decision and the
+  freeze-at-open half of **compact-expanded-sizing**'s — both were correct
+  for the dialog they were written against, just no longer the chosen
+  primitive going forward. Design resolved; not yet built.
 
 ## Decisions so far
 
@@ -160,13 +173,21 @@ narrow terminals.
   unchanged. This slice (durable supervisor info across past runs, reopen
   action, plus the new agent-dispatch-session panel) is a drop-in upgrade
   to that same panel later, not a redesign of it.
-- **tiled-run-grid** — blocked by: none. New feature request (2026-11-08):
-  watch multiple runs at once in a tiled grid inside the overlay. First
-  grill pass locked the shape (grid in the dialog — the host contract has
-  no split primitive, only `app`/`app_bottom` slots plus dialogs); the
-  spec's open questions (placement vs tabs/picker, 2-up vs N-up, focus
-  model, compact behavior, which runs tile) remain. Draft spec:
-  `docs/specs/opencode-overlay-tiles/spec.md`.
+- **tiled-run-grid** — blocked by: none. New feature request (2026-11-08);
+  design fully re-resolved via grill 2026-11-19 (prompted by live feedback
+  on keyboard-focus visibility — see Notes). Host primitive moves from
+  dialog to `session.panel`; scope grew to a full overlay migration
+  (workflows/runs/run-detail all move, not just the new grid). Two-layer
+  focus model — row-level inverse+glyph cursor, region-level `Tab`-cycled
+  `focusedBorderColor` boxes covering the tab strip, content area, and
+  tiles — fixes the standing keyboard-visibility complaint plugin-wide,
+  not just for the new grid; the tab strip itself becomes keyboard-
+  traversable instead of direct-jump-only. N-up by available width (no
+  cap), active-runs-only membership, no pinning in v1, condensed per-tile
+  summaries promoted to full detail on region-focus. Ready to build,
+  still unclaimed. Spec (resolved, no longer draft):
+  `docs/specs/opencode-overlay-tiles/spec.md`, ticket:
+  `tickets/tiled-run-grid.md`.
 - *(`search-picker-empty` retired — split into the three above; see that
   ticket file for the pointer. Shared draft spec for all three:
   `docs/specs/opencode-search-candidates/spec.md`, organized by package.)*

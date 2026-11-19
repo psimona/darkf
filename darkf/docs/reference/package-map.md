@@ -28,9 +28,10 @@ darkf ships two packages:
     [CLI commands](../cli-commands/). Depends on `core/` and `engine/`.
   - **`cli/`** — the `darkf` binary itself. Depends on all three.
 - **`darkf-opencode-plugin`** — an experimental OpenCode TUI integration
-  (a tabbed overlay inside the OpenCode editor: workflow definitions and
-  run status). No public release yet. Its own package,
-  because its peer dependencies (`@opencode-ai/plugin`, `@opentui/*`,
+  (a non-modal panel inside the OpenCode editor: workflow definitions and
+  run status, with active runs tiled side by side). No public release
+  yet. Its own package,
+  because its peer dependencies (`@opencode/plugin`, `@opentui/*`,
   `solid-js`) are real and optional — no other consumer needs them.
 
 A dependency-cruiser rule enforces the one-way chain

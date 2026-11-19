@@ -225,12 +225,17 @@ exercise this same routing logic without spending anything.
 
 ## See it in an editor
 
-darkf also ships an experimental OpenCode plugin — an overlay inside the
-editor, instead of a second terminal for `darkf monitor`. Two tabs:
-`workflows` catalogs every workflow definition as an expandable state
-graph, and `runs` lists every run — active ones first, each with a
-spinner — with a search box. Selecting a run shows its live graph, task
-tree, and dwell warnings.
+darkf also ships an experimental OpenCode plugin — a panel inside the
+editor, instead of a second terminal for `darkf monitor`. Chat stays
+visible beside it. A `panel │ full` toggle flips the panel full-screen,
+and a narrow terminal always gets full-screen. Two tabs: `workflows`
+catalogs every workflow definition as an expandable state graph, and
+`runs` shows your runs. Active runs tile side by side, as many as the
+width fits, and each drops out of the grid the moment it finishes. With
+none active, `runs` falls back to a plain list — active runs first, each
+with a spinner, with a search box. Selecting a run shows its live graph,
+task tree, and dwell warnings. `Tab` cycles focus across the tab strip,
+the content, and each tile.
 
 <div style="border: 2px dashed var(--sl-color-gray-4); border-radius: 0.5rem; padding: 3rem 1.5rem; text-align: center; color: var(--sl-color-gray-3); margin: 1.5rem 0;">
   Screenshot coming soon — OpenCode plugin overlay

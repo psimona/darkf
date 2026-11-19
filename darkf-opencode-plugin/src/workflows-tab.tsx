@@ -6,6 +6,7 @@ import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { listWorkflows, type WorkflowListing } from "@psimona/darkf";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { BOLD_INVERSE, DIM_INVERSE, INVERSE, rowGutter } from "./row-focus.ts";
 import { loadWorkflowCached } from "./store.ts";
 import {
   buildWorkflowGraph,
@@ -262,11 +263,11 @@ type LoadedEntry =
  *  tree: every node, its outgoing edges (`on` events, then the `next`
  *  fallback), composites nested with their entry state marked. Selecting an
  *  edge row moves the cursor/expand-focus to the target node and nothing
- *  else (r10). The catalog is scan-once per mount; the accent/error colors
- *  follow the same prop convention as `PlanGraph`/`TaskPane`, so the
- *  tab-container passes them straight through. */
+ *  else (r10). The catalog is scan-once per mount; the error color follows
+ *  the same prop convention as `PlanGraph`/`TaskPane`, so the tab-container
+ *  passes it straight through — the row cursor carries no color at all
+ *  (row-focus.ts, decision 5), so no accent prop reaches this tab. */
 export function WorkflowsTab(props: {
-  accent: RGBA;
   errorColor: RGBA;
   /** Defaults to a fresh `catalogEntries()` scan. */
   catalog?: CatalogEntry[];
@@ -387,10 +388,15 @@ export function WorkflowsTab(props: {
     if (row.node.kind === "composite" || row.node.edges.length > 0) toggleOpen(row.path);
   };
 
-  // Up/down move the highlighted row across the whole flat tree; return
-  // activates whatever's under the cursor. `mode: "global"`, not a custom
+  // Up/down move the highlighted row across the whole flat tree; space
+  // activates whatever's under the cursor (never `return` — see the
+  // activate command below). And never `tab`: the panel container owns the
+  // region cycle (overlay.tsx's `darkf.region.next`), and this layer
+  // participates in the order it defines by carrying only this view's own
+  // keys (spec: docs/specs/opencode-overlay-tiles/spec.md — Cross-Component
+  // Contracts, keymap-region-participation). `mode: "global"`, not a custom
   // mode name — see overlay.tsx's `OverlayContent` doc comment for why a
-  // custom mode never activates from inside `ui.dialog.show` content.
+  // custom mode never activates from inside dialog/panel-hosted content.
   context.keymap.layer(() => ({
     mode: "global",
     commands: [
@@ -432,6 +438,9 @@ export function WorkflowsTab(props: {
 
   const renderRow = (row: Row): JSX.Element => {
     const focused = () => cursor() === row.path;
+    // The cursor is row-focus.ts's inverse band + `❯` gutter (decision 5),
+    // layered over each cell's own style — never a color change, so the
+    // indicator doesn't rely on the theme to be visible.
 
     if (row.kind === "entry") {
       const graph = () => loadedGraph(row.entry.key);
@@ -440,11 +449,12 @@ export function WorkflowsTab(props: {
       return (
         <box flexDirection="column">
           <box flexDirection="row" onMouseDown={() => toggleEntry(row.entry)}>
-            <text fg={focused() ? props.accent : undefined} attributes={BOLD}>
+            <text attributes={focused() ? BOLD_INVERSE : BOLD}>
+              {rowGutter(focused())}
               {open() ? "⏷ " : "▶ "}
               {row.entry.listing.name}
             </text>
-            <text attributes={DIM}> ({row.entry.listing.source})</text>
+            <text attributes={focused() ? DIM_INVERSE : DIM}> ({row.entry.listing.source})</text>
           </box>
           {/* Three exclusive states — error, tree, or neither (= still
               loading). Plain `when` conditions, no fallback chaining: an
@@ -465,16 +475,14 @@ export function WorkflowsTab(props: {
     if (row.kind === "edge") {
       return (
         <box onMouseDown={() => selectEdge(row.entry, row.edge)}>
+          {/* The failed target keeps its error color focused or not — the
+              failure is a non-focus meaning accent used to overwrite when
+              the cursor landed here (decision 5); focus adds the band. */}
           <text
-            fg={
-              focused()
-                ? props.accent
-                : row.edge.target.kind === "failed"
-                  ? props.errorColor
-                  : undefined
-            }
-            attributes={focused() || row.edge.target.kind === "failed" ? undefined : DIM}
+            fg={row.edge.target.kind === "failed" ? props.errorColor : undefined}
+            attributes={focused() ? INVERSE : row.edge.target.kind === "failed" ? undefined : DIM}
           >
+            {rowGutter(focused())}
             {row.branch}
             {row.edge.event ?? "next"} → {targetLabel(row.edge.target)}
           </text>
@@ -499,14 +507,15 @@ export function WorkflowsTab(props: {
           setCursor(row.path);
         }}
       >
-        <text fg={focused() ? props.accent : undefined} attributes={BOLD}>
+        <text attributes={focused() ? BOLD_INVERSE : BOLD}>
+          {rowGutter(focused())}
           {row.branch}
           {caret}
           {icon}
           {node.id}
         </text>
         <Show when={row.isInitial}>
-          <text attributes={DIM}> (initial)</text>
+          <text attributes={focused() ? DIM_INVERSE : DIM}> (initial)</text>
         </Show>
       </box>
     );

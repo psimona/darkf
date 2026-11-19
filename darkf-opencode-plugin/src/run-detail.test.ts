@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type DetailLayout, layoutDirection, RunDetail, RunsTabContent } from "./run-detail.tsx";
+import {
+  type DetailLayout,
+  layoutDirection,
+  RunDetail,
+  RunDetailBody,
+  RunsTabContent,
+} from "./run-detail.tsx";
 
 describe("layoutDirection — r11: the manual toggle swaps the pane row", () => {
   test("side-by-side is the fixed two-column row", () => {
@@ -18,9 +24,10 @@ describe("layoutDirection — r11: the manual toggle swaps the pane row", () => 
   });
 });
 
-describe("RunDetail / RunsTabContent", () => {
-  test("the detail view and the tab's list↔detail switch are defined — the module transforms and loads", () => {
+describe("RunDetail / RunsTabContent / RunDetailBody", () => {
+  test("the detail view, its extracted body, and the tab's list↔detail switch are defined — the module transforms and loads", () => {
     expect(typeof RunDetail).toBe("function");
+    expect(typeof RunDetailBody).toBe("function");
     expect(typeof RunsTabContent).toBe("function");
   });
 });

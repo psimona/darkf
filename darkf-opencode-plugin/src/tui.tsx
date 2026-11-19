@@ -1,6 +1,6 @@
 import { Plugin } from "@opencode/plugin/tui";
 import { registerBand } from "./band.tsx";
-import { initOverlay, openOverlay } from "./overlay.tsx";
+import { initOverlay, openOverlay, registerOverlayPanel } from "./overlay.tsx";
 import { registerSidebar } from "./sidebar.tsx";
 import { startStore } from "./store.ts";
 import { registerPromptToggle } from "./toggle.tsx";
@@ -18,17 +18,24 @@ export default Plugin.define({
     // docs/specs/_built/opencode-overlay-dialog/spec.md). Unconditional auto-open
     // either way: a darkf-only view beats no view when there's no chat to
     // replace, and `PlanGraph`/`SupervisorPanel` degrade on their own when
-    // `supervisor` is absent. Opening is a host dialog, so it never disturbs
-    // whatever route is current when a run starts.
+    // `supervisor` is absent. Opening resolves against the registered
+    // `session.panel` contribution — `focus` when already open, `ui.panel.open`
+    // under "darkf.panel" otherwise — so it never disturbs whatever route is
+    // current when a run starts. Outside a session the open is a no-op: the
+    // panel is session-scoped (spec: docs/specs/opencode-overlay-tiles/spec.md,
+    // decision 1).
     const { store, dispose } = startStore(context, directory, (binding) => {
       openOverlay(binding.runId);
     });
 
     initOverlay(context, store);
+    registerOverlayPanel(context, store);
     registerBand(context, store);
     registerSidebar(context, store);
     registerPromptToggle(context, store);
 
+    // The command path to the overlay: the same registered panel contribution
+    // as auto-open (see `openOverlay`), so opening never navigates.
     context.keymap.layer(() => ({
       mode: "global",
       commands: [

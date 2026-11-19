@@ -12,11 +12,14 @@ function runIdForSession(store: LiveStore, sessionID: string): string | undefine
 }
 
 /** The closed-state half of the toggle — the prompt footer's right end (V1
- *  used the dedicated `home_prompt_right`/`session_prompt_right` slots,
- *  which V2's slot tree no longer publishes). Opens straight to this
+ *  used the dedicated `home_prompt_right`/`session_prompt_right` slots, which
+ *  V2's slot tree no longer publishes; this one handler covers both cases the
+ *  two V1 slots did — session-bound run, no bound run). Opens straight to this
  *  session's bound run when it has one, mirroring auto-open; otherwise
  *  behaves like the `darkf.open` command — the tab container, `workflows`
- *  tab by default. Opening never navigates — see `openOverlay`. */
+ *  tab by default. Opening resolves against the registered `session.panel`
+ *  contribution — `focus` when already open, `ui.panel.open` otherwise — and
+ *  never navigates; see `openOverlay`. */
 export function registerPromptToggle(context: Plugin.Context, store: LiveStore): void {
   context.ui.slot({
     append: "prompt.footer",
