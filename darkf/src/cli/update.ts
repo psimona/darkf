@@ -2,9 +2,9 @@
 // the `darkf upgrade` command. Every dependency arrives via UpdateDeps, so the
 // whole module runs in tests without network, a real clock, or a real package
 // manager. No module-level mutable state.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import { type SkillsDeps, syncAll } from "./setup.ts";
+import { writeJsonState } from "./state-file.ts";
 
 const PACKAGE_SPEC = "@psimona/darkf";
 const REGISTRY_URL = "https://registry.npmjs.org/-/package/@psimona%2Fdarkf/dist-tags";
@@ -47,12 +47,7 @@ export function readState(file: string): UpdateState {
 
 /** mkdir -p on the parent; best-effort — swallow write errors (REQ-4). */
 export function writeState(file: string, state: UpdateState): void {
-  try {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(state));
-  } catch {
-    // An unwritable state location degrades to re-checking next invocation.
-  }
+  writeJsonState(file, state);
 }
 
 /** True when lastCheck is missing, unparseable, or older than 24 h. */

@@ -6,6 +6,7 @@ import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { createSignal, Show } from "solid-js";
 import type { PlanView, TaskListView } from "./digest.ts";
+import { flipInSet } from "./path-toggle.ts";
 import { PlanGraph, SupervisorPanel, TaskPane } from "./run-view.tsx";
 import { RunsTab, runTitle } from "./runs-tab.tsx";
 import type { LiveStore } from "./store.ts";
@@ -59,14 +60,7 @@ export function RunDetailBody(props: {
   // shape the old run-scoped dialog carried, now scoped to this body.
   const [manualOpen, setManualOpen] = createSignal<ReadonlySet<string>>(new Set());
   const isOpen = (path: string) => manualOpen().has(path);
-  const toggleOpen = (path: string): void => {
-    setManualOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
+  const toggleOpen = (path: string): void => setManualOpen((prev) => flipInSet(prev, path));
 
   return (
     <box flexDirection="column" flexGrow={1} minHeight={0} gap={1}>

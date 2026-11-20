@@ -1,43 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import {
-  AgentFailure,
-  type AgentRunner,
-  type AgentStateDef,
-  type NodeResult,
-} from "../../core/index.ts";
-import {
-  handoffContractText,
-  handoffPath,
-  nudgeMessage,
-  readHandoff,
-  usagePath,
-} from "./handoff.ts";
+import { AgentFailure, type AgentRunner, type NodeResult } from "../../core/index.ts";
+import { buildPrompt, handoffPath, nudgeMessage, readHandoff, usagePath } from "./handoff.ts";
 
 // Mirrors darkf-engine's own DEFAULT_TIMEOUT_MS (run.ts) so this runner can
 // kill its own subprocess in step with the engine's timeout instead of
 // leaving it running past the point where the engine has moved on — see
 // docs/specs/_built/agent-handoff/spec.md's retry-overwrite race note.
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
-
-function buildPrompt(
-  def: AgentStateDef,
-  handoff: NodeResult,
-  info: { validEvents: string[]; hasFallback: boolean },
-  path: string,
-): string {
-  const parts = [def.prompt, `Input from the previous step:\n${JSON.stringify(handoff)}`];
-
-  if (info.validEvents.length > 0) {
-    const fallbackNote = info.hasFallback ? ` If none apply, you may omit "event" instead.` : "";
-    parts.push(
-      `Your "event" must be exactly one of: ${info.validEvents.join(", ")}.${fallbackNote}`,
-    );
-  }
-
-  parts.push(handoffContractText(path));
-  return parts.join("\n\n");
-}
 
 interface ClaudeCodeStdout {
   session_id?: string;

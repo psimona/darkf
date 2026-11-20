@@ -5,35 +5,21 @@ import {
   AgentFailure,
   type AgentProgress,
   type AgentRunner,
-  type AgentStateDef,
   type DispatchInfo,
   type NodeResult,
 } from "../../core/index.ts";
-import { handoffContractText, handoffPath, nudgeMessage, readHandoff } from "./handoff.ts";
+import {
+  buildPrompt,
+  handoffContractText,
+  handoffPath,
+  nudgeMessage,
+  readHandoff,
+} from "./handoff.ts";
 
 // Mirrors darkf-engine's own DEFAULT_TIMEOUT_MS (run.ts), same reason
 // claude-code.ts does: kill the subprocess in step with the engine's own
 // timeout instead of leaving it running past the point the engine moved on.
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
-
-function buildPrompt(
-  def: AgentStateDef,
-  handoff: NodeResult,
-  info: { validEvents: string[]; hasFallback: boolean },
-  path: string,
-): string {
-  const parts = [def.prompt, `Input from the previous step:\n${JSON.stringify(handoff)}`];
-
-  if (info.validEvents.length > 0) {
-    const fallbackNote = info.hasFallback ? ` If none apply, you may omit "event" instead.` : "";
-    parts.push(
-      `Your "event" must be exactly one of: ${info.validEvents.join(", ")}.${fallbackNote}`,
-    );
-  }
-
-  parts.push(handoffContractText(path));
-  return parts.join("\n\n");
-}
 
 export interface StepFinishScan {
   reason?: string;

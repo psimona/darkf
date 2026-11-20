@@ -6,6 +6,7 @@ import { createTextAttributes, type RGBA } from "@opentui/core";
 import type { JSX } from "@opentui/solid/jsx-runtime";
 import { listWorkflows, type WorkflowListing } from "@psimona/darkf";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { flipInSet } from "./path-toggle.ts";
 import { BOLD_INVERSE, DIM_INVERSE, INVERSE, rowGutter } from "./row-focus.ts";
 import { loadWorkflowCached } from "./store.ts";
 import {
@@ -283,14 +284,7 @@ export function WorkflowsTab(props: {
   const [cursor, setCursor] = createSignal<string | undefined>(undefined);
 
   const isOpen = (path: string) => manualOpen().has(path);
-  const toggleOpen = (path: string): void => {
-    setManualOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
+  const toggleOpen = (path: string): void => setManualOpen((prev) => flipInSet(prev, path));
   const openAll = (paths: string[]): void => {
     setManualOpen((prev) => {
       const next = new Set(prev);

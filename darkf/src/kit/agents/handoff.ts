@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { DispatchInfo } from "../../core/index.ts";
+import type { AgentStateDef, DispatchInfo, NodeResult } from "../../core/index.ts";
 
 // Shared, harness-agnostic half of the agent-handoff contract. See
 // docs/specs/_built/agent-handoff/spec.md. Per-harness runners own everything else
@@ -33,6 +33,28 @@ Write nothing else to that path. Create the file's parent directories if they do
 export async function readHandoff(path: string): Promise<unknown> {
   const text = await readFile(path, "utf8");
   return JSON.parse(text);
+}
+
+/** Builds one agent's prompt from its state def, the previous step's
+ *  handoff, and the valid outgoing events — identical for every harness,
+ *  so each runner calls this instead of building its own. */
+export function buildPrompt(
+  def: AgentStateDef,
+  handoff: NodeResult,
+  info: { validEvents: string[]; hasFallback: boolean },
+  path: string,
+): string {
+  const parts = [def.prompt, `Input from the previous step:\n${JSON.stringify(handoff)}`];
+
+  if (info.validEvents.length > 0) {
+    const fallbackNote = info.hasFallback ? ` If none apply, you may omit "event" instead.` : "";
+    parts.push(
+      `Your "event" must be exactly one of: ${info.validEvents.join(", ")}.${fallbackNote}`,
+    );
+  }
+
+  parts.push(handoffContractText(path));
+  return parts.join("\n\n");
 }
 
 /**

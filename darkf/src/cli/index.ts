@@ -245,13 +245,23 @@ function describeValidationError(err: WorkflowValidationError): string {
  * not checked here — a workflow can be sound on a machine whose skills are
  * stale; the two verdicts stay independent.
  */
-async function validateCmd(args: string[]): Promise<number> {
-  const ref = args[0];
+/** Shared ok/FAIL line printer for `validate` and `doctor`: logs each check
+ *  as it runs and remembers whether any of them failed. */
+function makeChecker(): {
+  check: (label: string, ok: boolean, detail?: string) => void;
+  failed: () => boolean;
+} {
   let fail = false;
   const check = (label: string, ok: boolean, detail?: string) => {
     console.log(`${ok ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
     if (!ok) fail = true;
   };
+  return { check, failed: () => fail };
+}
+
+async function validateCmd(args: string[]): Promise<number> {
+  const ref = args[0];
+  const { check, failed } = makeChecker();
 
   // 1. workflow resolution
   if (ref === undefined) {
@@ -311,7 +321,7 @@ async function validateCmd(args: string[]): Promise<number> {
     check("exports `agentRunner`", false, "skipped — no resolved workflow");
   }
 
-  return Promise.resolve(fail ? 1 : 0);
+  return Promise.resolve(failed() ? 1 : 0);
 }
 
 /**
@@ -325,11 +335,7 @@ function doctorCmd(args: string[]): number {
     console.log("usage: darkf doctor takes no ref — darkf validate <ref> for workflow checks");
     return 1;
   }
-  let fail = false;
-  const check = (label: string, ok: boolean, detail?: string) => {
-    console.log(`${ok ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
-    if (!ok) fail = true;
-  };
+  const { check, failed } = makeChecker();
 
   // 1. agent binaries
   for (const bin of ["claude", "opencode"]) {
@@ -369,7 +375,7 @@ function doctorCmd(args: string[]): number {
     }
   }
 
-  return fail ? 1 : 0;
+  return failed() ? 1 : 0;
 }
 
 function workflowsCmd(): void {

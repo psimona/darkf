@@ -12,9 +12,9 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { writeJsonState } from "./state-file.ts";
 
 // The known harnesses are a table in code — adding one is a row plus a test
 // fixture, not a feature (spec: Host detection). `dir` is relative to HOME;
@@ -227,12 +227,7 @@ export function readProbeState(file: string): ProbeState {
 
 /** mkdir -p on the parent; best-effort — swallow write errors. */
 export function writeProbeState(file: string, state: ProbeState): void {
-  try {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(state));
-  } catch {
-    // An unwritable state location degrades to re-probing next invocation.
-  }
+  writeJsonState(file, state);
 }
 
 /** The local calendar date — the day a probe compares against, not UTC. */

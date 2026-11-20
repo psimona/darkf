@@ -1,0 +1,55 @@
+{
+  "scanners": [
+    {
+      "id": "javascript",
+      "source": "@groma/scanner-javascript@0.2.3",
+      "include": [
+        "**/*.js",
+        "**/*.mjs",
+        "**/*.cjs",
+        "**/*.jsx",
+        "**/package.json",
+        "**/*.html",
+        "**/project.json",
+        "**/nx.json"
+      ],
+      "exclude": [
+        "*.min.js",
+        "*.min.mjs",
+        "*.min.cjs",
+        "*.min.jsx",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/",
+        "/.dependency-cruiser.mjs"
+      ]
+    },
+    {
+      "id": "typescript",
+      "source": "@groma/scanner-typescript@0.2.4",
+      "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/tsconfig*.json",
+        "**/package.json",
+        "**/*.html",
+        "**/angular.json",
+        "**/project.json",
+        "**/nx.json"
+      ],
+      "exclude": [
+        "*.test.ts",
+        "*.test.tsx",
+        "*.spec.ts",
+        "*.spec.tsx",
+        "/test/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/"
+      ]
+    }
+  ],
+  "workSources": []
+}
